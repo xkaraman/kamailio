@@ -214,11 +214,12 @@ static inline int skip_name(str *_s)
  */
 int parse_contacts(str *_s, contact_t **_c)
 {
-	contact_t *c;
+	contact_t *c, **head;
 	param_hooks_t hooks;
 	str sv;
 
 	sv = *_s;
+	head = _c;
 
 	while(1) {
 		/* Allocate and clear contact structure */
@@ -298,9 +299,9 @@ int parse_contacts(str *_s, contact_t **_c)
 		_s->len--;
 		trim_leading(_s);
 
-		c->next = *_c;
 		*_c = c;
-		c = NULL;
+		_c = &c->next;
+		c->next = NULL;
 
 		if(_s->len == 0) {
 			LM_ERR("text after comma missing\n");
@@ -318,8 +319,9 @@ error:
 
 ok:
 	c->len = _s->s - c->name.s;
-	c->next = *_c;
 	*_c = c;
+	_c = &c->next;
+	c->next = NULL;
 	return 0;
 }
 
