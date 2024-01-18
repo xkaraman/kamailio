@@ -1,0 +1,30 @@
+Num of threads = 5
+Num of iterations = 10000000
+if usleep(1), all real times are around 56 seconds, but the sum accumulated value is wrong for some of the locking methods (see below)
+
+			nolock		posix		pmutex		fastl 		c11_mutex(mtx) 	c11_atomic_bool 		sysv		flock
+
+Ubuntu 5.4.0-169-generic (gcc)
+-----------------------------------------------------------------------------------------------------------------------
+real:		0.00		 1.53		0.34		0.16		0.31				1.14				70.77		3.07
+user:		0.00		 2.77		0.46		0.39		0.51				3.31				5.61		0.77
+sys:		0.00		 1.63		0.39		0.00		0.39				0.00				93.52		7.67
+
+sum:		correct 	correct		correct		wrong		correct				correct				correct		wrong
+			(wrong								(sometimes
+	 		accumulated 						it hungs )
+			value if
+			usleep(1)
+			is used)
+
+nolock= no locking, just a loop in multiple threads
+flock= using flock
+sysv = using SYSV semaphores
+posix = using POSIX1003.1b semaphores (sem_wait, sem_post)
+pmutex = using pthread_mutex*
+fastl = using fastlock.h from ser (hand made assembler locks)
+c11_mutex = using C11 mutex (mtx)
+c11_atomic_bool = using C11 atomic_bool (atomic_flag)
+
+Test: time ./locking_test* -c 10000000
+(sip_router/test/locking/*)

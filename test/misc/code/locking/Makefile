@@ -5,9 +5,10 @@
 
 NAME=locking_test
 
+# CC=aarch64-linux-gnu-gcc
 CC=gcc
-CFLAGS= -O2 -Wall
-DEFS=
+CFLAGS= -O2 -Wall -static
+DEFS= -D_DEFAULT_SOURCE -D__CPU_x86_64 -DNOSMP
 LIBS=
 INCLUDE=
 PTHREAD_LIBS= -lpthread
@@ -25,32 +26,45 @@ PTHREAD_LIBS= -lc_r
 endif
 
 $(NAME): $(NAME).c
-	gcc $(CFLAGS) $(DEFS) -DNO_LOCK -o $@ $< $(LIBS)
+	$(CC) $(CFLAGS) $(DEFS) -DNO_LOCK -o $@ $< $(LIBS) \
+		$(PTHREAD_LIBS)
 
 
 $(NAME)_sysv: $(NAME).c
-	gcc $(CFLAGS) $(DEFS) -DSYSV_SEM -o $@ $(INCLUDE) $< $(LIBS)
+	$(CC) $(CFLAGS) $(DEFS) -DSYSV_SEM -o $@ $(INCLUDE) $< $(LIBS) \
+		$(PTHREAD_LIBS)
 
 
 $(NAME)_flock: $(NAME).c
-	gcc $(CFLAGS) $(DEFS) -DFLOCK -o $@ $(INCLUDE) $< $(LIBS)
+	$(CC) $(CFLAGS) $(DEFS) -DFLOCK -o $@ $(INCLUDE) $< $(LIBS) \
+		$(PTHREAD_LIBS)
 
 $(NAME)_posix: $(NAME).c
-	gcc $(CFLAGS) $(DEFS) -DPOSIX_SEM -o $@ $(INCLUDE) $< $(LIBS) \
-		$(PTHREAD_LIBS) 
+	$(CC) $(CFLAGS) $(DEFS) -DPOSIX_SEM -o $@ $(INCLUDE) $< $(LIBS) \
+		$(PTHREAD_LIBS)
 
 $(NAME)_pmutex: $(NAME).c
-	gcc $(CFLAGS) $(DEFS) -DPTHREAD_MUTEX -o $@ $(INCLUDE) $< $(LIBS) \
+	$(CC) $(CFLAGS) $(DEFS) -DPTHREAD_MUTEX -o $@ $(INCLUDE) $< $(LIBS) \
 		$(PTHREAD_LIBS)
 
 $(NAME)_fastlock: $(NAME).c
-	gcc $(CFLAGS) $(DEFS) -DFAST_LOCK -o $@ $(INCLUDE) $< $(LIBS) 
+	$(CC) $(CFLAGS) $(DEFS) -DFAST_LOCK -o $@ $(INCLUDE) $< $(LIBS) \
+		$(PTHREAD_LIBS)
 
 $(NAME)_futex: $(NAME).c
-	gcc $(CFLAGS) $(DEFS) -DFUTEX -o $@ $(INCLUDE) $< $(LIBS) 
+	$(CC) $(CFLAGS) $(DEFS) -DFUTEX -o $@ $(INCLUDE) $< $(LIBS) \
+		$(PTHREAD_LIBS)
+
+$(NAME)_c11_mutex: $(NAME).c
+	$(CC) $(CFLAGS) $(DEFS) -DC11_MUTEX -o $@ $(INCLUDE) $< $(LIBS) -Ofast -std=c11 \
+		$(PTHREAD_LIBS)
+
+$(NAME)_c11_bool: $(NAME).c
+	$(CC) $(CFLAGS) $(DEFS) -DC11_BOOL  -o $@ $(INCLUDE) $< $(LIBS) -std=c11 -Ofast \
+		$(PTHREAD_LIBS)
 
 all: $(NAME) $(NAME)_sysv  $(NAME)_posix $(NAME)_pmutex \
-		$(NAME)_fastlock
+		$(NAME)_fastlock $(NAME)_c11_mutex $(NAME)_c11_bool
 
 ifneq ($(OS), SunOS)
 
@@ -60,4 +74,5 @@ endif
 
 clean:
 	-@rm $(NAME) $(NAME)_sysv $(NAME)_flock $(NAME)_posix \
-		$(NAME)_pmutex $(NAME)_fastlock
+		$(NAME)_pmutex $(NAME)_fastlock $(NAME)_futex \
+		$(NAME)_c11_mutex

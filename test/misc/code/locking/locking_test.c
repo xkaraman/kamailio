@@ -26,7 +26,6 @@
  */
 
 
-
 #include <stdio.h>
 #include <stdlib.h>
 #include <errno.h>
@@ -35,6 +34,8 @@
 #include <unistd.h>
 #include <sys/types.h>
 #include <fcntl.h>
+#include <bits/getopt_core.h>
+#include <pthread.h>
 
 #ifdef FLOCK
 #include <sys/file.h>
@@ -54,111 +55,135 @@ pthread_mutex_t mutex = PTHREAD_MUTEX_INITIALIZER;
 #endif
 
 #ifdef FAST_LOCK
-#include "../../fastlock.h"
+#include "../../../../src/core/fastlock.h"
 fl_lock_t lock;
 #endif
 
 #ifdef FUTEX
 #define USE_FUTEX
-#include "../../futexlock.h"
+#include "../../../../src/core/futexlock.h"
 futex_lock_t lock;
+#endif
+
+#ifdef C11_MUTEX
+#include <threads.h>
+mtx_t lock;
+#endif
+
+#ifdef C11_BOOL
+#include <stdatomic.h>
+#include <stdbool.h>
+atomic_bool lock = ATOMIC_VAR_INIT(false);
 #endif
 
 #ifdef SYSV_SEM
 #include <sys/ipc.h>
 #include <sys/sem.h>
+#include <bits/getopt_core.h>
 
 
-#if (defined(__GNU_LIBRARY__) && !defined(_SEM_SEMUN_UNDEFINED)) || \
-	defined(__FreeBSD__)
-	/* union semun is defined by including <sys/sem.h> */
+#if(defined(__GNU_LIBRARY__) && !defined(_SEM_SEMUN_UNDEFINED)) \
+		|| defined(__FreeBSD__)
+/* union semun is defined by including <sys/sem.h> */
 #else
-	/* according to X/OPEN we have to define it ourselves */
-	union semun {
-		int val;                    /* value for SETVAL */
-		struct semid_ds *buf;       /* buffer for IPC_STAT, IPC_SET */
-		unsigned short int *array;  /* array for GETALL, SETALL */
-		struct seminfo *__buf;      /* buffer for IPC_INFO */
-	};
+/* according to X/OPEN we have to define it ourselves */
+union semun
+{
+	int val;				   /* value for SETVAL */
+	struct semid_ds *buf;	   /* buffer for IPC_STAT, IPC_SET */
+	unsigned short int *array; /* array for GETALL, SETALL */
+	struct seminfo *__buf;	   /* buffer for IPC_INFO */
+};
 #endif
 
-static int semid=-1;
+static int semid = -1;
 
 #endif
 
 
 #ifdef NO_LOCK
-	#define LOCK()
-	#define UNLOCK()
+#define LOCK()
+#define UNLOCK()
 #elif defined SYSV_SEM
-	#define LOCK() \
-	{\
-		struct sembuf sop; \
-		sop.sem_num=0; \
-		sop.sem_op=-1; /*down*/ \
-		sop.sem_flg=0 /*SEM_UNDO*/; \
-		semop(semid, &sop, 1); \
+#define LOCK()                        \
+	{                                 \
+		struct sembuf sop;            \
+		sop.sem_num = 0;              \
+		sop.sem_op = -1; /*down*/     \
+		sop.sem_flg = 0 /*SEM_UNDO*/; \
+		semop(semid, &sop, 1);        \
 	}
 
-	#define UNLOCK()	\
-	{\
-		struct sembuf sop;\
-		sop.sem_num=0;\
-		sop.sem_op=1; /*up*/\
-		sop.sem_flg=0 /*SEM_UNDO*/;\
-		semop(semid, &sop, 1);\
+#define UNLOCK()                      \
+	{                                 \
+		struct sembuf sop;            \
+		sop.sem_num = 0;              \
+		sop.sem_op = 1; /*up*/        \
+		sop.sem_flg = 0 /*SEM_UNDO*/; \
+		semop(semid, &sop, 1);        \
 	}
 #elif defined FLOCK
 
-	#define LOCK() \
-		flock(lock_fd, LOCK_EX)
-	#define  UNLOCK() \
-		flock(lock_fd, LOCK_UN)
+#define LOCK() flock(lock_fd, LOCK_EX)
+#define UNLOCK() flock(lock_fd, LOCK_UN)
 #elif defined POSIX_SEM
-	#define LOCK() \
-		sem_wait(&sem)
-	#define UNLOCK() \
-		sem_post(&sem);
+#define LOCK() sem_wait(&sem)
+#define UNLOCK() sem_post(&sem);
 #elif defined PTHREAD_MUTEX
-	#define LOCK() \
-		pthread_mutex_lock(&mutex)
-	#define UNLOCK() \
-		pthread_mutex_unlock(&mutex)
+#define LOCK() pthread_mutex_lock(&mutex)
+#define UNLOCK() pthread_mutex_unlock(&mutex)
 #elif defined FAST_LOCK
-	#define LOCK() \
-		get_lock(&lock)
-	#define UNLOCK() \
-		release_lock(&lock)
+#define LOCK() get_lock(&lock)
+#define UNLOCK() release_lock(&lock)
 #elif defined FUTEX
-	#define LOCK() \
-		futex_get(&lock)
-	#define UNLOCK() \
-		futex_release(&lock)
+#define LOCK() futex_get(&lock)
+#define UNLOCK() futex_release(&lock)
+#elif defined C11_MUTEX
+#define LOCK() mtx_lock(&lock)
+#define UNLOCK() mtx_unlock(&lock)
+#elif defined C11_BOOL
+inline static bool try(atomic_bool *lock)
+{
+	bool expected = false;
+	return atomic_compare_exchange_strong(lock, &expected, true);
+}
+
+inline static void unlock(atomic_bool *lock)
+{
+	atomic_store(lock, false);
+}
+
+#define LOCK()           \
+	while(!try(&lock)) { \
+	} // keep trying until we get the lock
+#define UNLOCK() unlock(&lock)
 #endif
 
 
-
-
-static char *id="$Id$";
-static char *version="locking_test 0.1-"
+static char *id = "$Id$";
+static char *version = "locking_test 0.1-"
 #ifdef NO_LOCK
- "nolock"
+					   "nolock"
 #elif defined SYSV_SEM
- "sysv_sem"
+					   "sysv_sem"
 #elif defined FLOCK
- "flock"
+					   "flock"
 #elif defined POSIX_SEM
- "posix_sem"
+					   "posix_sem"
 #elif defined PTHREAD_MUTEX
- "pthread_mutex"
+					   "pthread_mutex"
 #elif defined FAST_LOCK
- "fast_lock"
+					   "fast_lock"
 #elif defined FUTEX
- "futex"
+					   "futex"
+#elif defined C11_MUTEX
+					   "c11_mutex"
+#elif defined C11_BOOL
+					   "c11_bool"
 #endif
-;
+		;
 
-static char* help_msg="\
+static char *help_msg = "\
 Usage: locking_test -n address [-c count] [-v]\n\
 Options:\n\
     -c count      how many times to try lock/unlock \n\
@@ -166,10 +191,34 @@ Options:\n\
     -V            version number\n\
     -h            this help message\n\
 ";
+#include <unistd.h> // for usleep function
+
+#define NUM_THREADS 5
+int shared_variable = 0;
+int loopfor = 10000000;
+#include <stdatomic.h>
+
+void *test_lock_unlock(void *threadid)
+{
+	long tid;
+	tid = (long)threadid;
+	printf("Thead %ld\n", tid);
+	int count = loopfor / NUM_THREADS;
+	for(int r = 0; r < count; r++) {
+		LOCK();
+		shared_variable = shared_variable + 1;
+		// if (!(r%5000)) {
+		// 	printf("Thead %ld\n", tid);
+		// }
+		UNLOCK();
+		// usleep(1); // sleep for 1 microsecond
+	}
+
+	pthread_exit(NULL);
+}
 
 
-
-int main (int argc, char** argv)
+int main(int argc, char **argv)
 {
 	int c;
 	int r;
@@ -183,28 +232,28 @@ int main (int argc, char** argv)
 #endif
 
 	/* init */
-	count=0;
-	verbose=0;
-	address=0;
+	count = 0;
+	verbose = 0;
+	address = 0;
+	int opterr = 0;
 
 
-
-	opterr=0;
-	while ((c=getopt(argc,argv, "c:vhV"))!=-1){
-		switch(c){
+	opterr = 0;
+	while((c = getopt(argc, argv, "c:vhV")) != -1) {
+		switch(c) {
 			case 'v':
 				verbose++;
 				break;
 			case 'c':
-				count=strtol(optarg, &tmp, 10);
-				if ((tmp==0)||(*tmp)){
+				count = strtol(optarg, &tmp, 10);
+				if((tmp == 0) || (*tmp)) {
 					fprintf(stderr, "bad count: -c %s\n", optarg);
 					goto error;
 				}
 				break;
 			case 'V':
 				printf("version: %s\n", version);
-				printf("%s\n",id);
+				printf("%s\n", id);
 				exit(0);
 				break;
 			case 'h':
@@ -213,27 +262,26 @@ int main (int argc, char** argv)
 				exit(0);
 				break;
 			case '?':
-				if (isprint(optopt))
-					fprintf(stderr, "Unknown option `-%c´\n", optopt);
+				if(isprint(optopt))
+					fprintf(stderr, "Unknown option `-%cï¿½\n", optopt);
 				else
-					fprintf(stderr, "Unknown character `\\x%x´\n", optopt);
+					fprintf(stderr, "Unknown character `\\x%xï¿½\n", optopt);
 				goto error;
 			case ':':
-				fprintf(stderr, "Option `-%c´ requires an argument.\n",
-						optopt);
+				fprintf(stderr, "Option `-%cï¿½ requires an argument.\n", optopt);
 				goto error;
 				break;
 			default:
-					abort();
+				abort();
 		}
 	}
 
 
 	/* check if all the required params are present */
-	if(count==0){
+	if(count == 0) {
 		fprintf(stderr, "Missing count (-c number)\n");
 		exit(-1);
-	}else if(count<0){
+	} else if(count < 0) {
 		fprintf(stderr, "Invalid count (-c %d)\n", count);
 		exit(-1);
 	}
@@ -242,15 +290,15 @@ int main (int argc, char** argv)
 #ifdef SYSV_SEM
 	/*init*/
 	puts("Initializing SYS V semaphores\n");
-	semid=semget(IPC_PRIVATE,1,0700);
-	if(semid==-1){
+	semid = semget(IPC_PRIVATE, 1, 0700);
+	if(semid == -1) {
 		fprintf(stderr, "ERROR: could not init semaphore: %s\n",
 				strerror(errno));
 		goto error;
 	}
 	/*set init value to 1 (mutex)*/
-	su.val=1;
-	if (semctl(semid, 0, SETVAL, su)==-1){
+	su.val = 1;
+	if(semctl(semid, 0, SETVAL, su) == -1) {
 		fprintf(stderr, "ERROR: could not set initial semaphore value: %s\n",
 				strerror(errno));
 		semctl(semid, 0, IPC_RMID, (union semun)0);
@@ -258,14 +306,14 @@ int main (int argc, char** argv)
 	}
 #elif defined FLOCK
 	puts("Initializing flock\n");
-	lock_fd=open("/dev/zero", O_RDONLY);
-	if (lock_fd==-1){
+	lock_fd = open("/dev/zero", O_RDONLY);
+	if(lock_fd == -1) {
 		fprintf(stderr, "ERROR: could not open file: %s\n", strerror(errno));
 		goto error;
 	}
 #elif defined POSIX_SEM
 	puts("Initializing semaphores\n");
-	if (sem_init(&sem, 0, 1)<0){
+	if(sem_init(&sem, 0, 1) < 0) {
 		fprintf(stderr, "ERROR: could not initialize semaphore: %s\n",
 				strerror(errno));
 		goto error;
@@ -279,17 +327,37 @@ int main (int argc, char** argv)
 #elif defined FUTEX
 	puts("Initializing futex lock\n");
 	futex_init(&lock);
+
+#elif defined C11_MUTEX
+	puts("Initializing C11 mutex\n");
+	mtx_init(&lock, mtx_plain);
+
+#elif defined C11_BOOL
+	puts("Initializing C11 bool\n");
+	// atomic_init(&lock, false);
 #endif
 
-
 	/*  loop */
-	for (r=0; r<count; r++){
-		LOCK();
-		if ((verbose>1)&&(r%1000))  putchar('.');
-		UNLOCK();
-	}
+	pthread_t threads[NUM_THREADS];
+	int rc;
+	long t;
 
-	printf("%d loops\n", count);
+	for(t = 0; t < NUM_THREADS; t++) {
+		rc = pthread_create(&threads[t], NULL, test_lock_unlock, (void *)t);
+		if(rc) {
+			printf("ERROR; return code from pthread_create() is %d\n", rc);
+			exit(-1);
+		}
+	}
+	atomic_thread_fence(memory_order_relaxed);
+
+	for(t = 0; t < NUM_THREADS; t++) {
+		pthread_join(threads[t], NULL);
+	}
+	printf("Final value should be \t\t%d\n", loopfor);
+	printf("Final value of shared variable: %d\n", shared_variable);
+
+	// printf("%d loops\n", count);
 
 #ifdef SYSV_SEM
 	semctl(semid, 0, IPC_RMID, (union semun)0);
