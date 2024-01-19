@@ -36,6 +36,7 @@
 #include <fcntl.h>
 #include <bits/getopt_core.h>
 #include <pthread.h>
+// #include <stdatomic.h>
 
 #ifdef FLOCK
 #include <sys/file.h>
@@ -191,27 +192,28 @@ Options:\n\
     -V            version number\n\
     -h            this help message\n\
 ";
-#include <unistd.h> // for usleep function
 
-#define NUM_THREADS 5
+
+#define NUM_THREADS 8
+
 int shared_variable = 0;
-int loopfor = 10000000;
-#include <stdatomic.h>
+int count;
 
 void *test_lock_unlock(void *threadid)
 {
 	long tid;
 	tid = (long)threadid;
-	printf("Thead %ld\n", tid);
-	int count = loopfor / NUM_THREADS;
-	for(int r = 0; r < count; r++) {
+	// printf("Thead %ld\n", tid);
+	int countperthread = count / NUM_THREADS;
+	for(int r = 0; r < countperthread; r++) {
 		LOCK();
+		// atomic_fetch_add(&shared_variable, 1);
 		shared_variable = shared_variable + 1;
 		// if (!(r%5000)) {
 		// 	printf("Thead %ld\n", tid);
 		// }
 		UNLOCK();
-		// usleep(1); // sleep for 1 microsecond
+		// usleep(5); // sleep for 1 microsecond
 	}
 
 	pthread_exit(NULL);
@@ -221,21 +223,21 @@ void *test_lock_unlock(void *threadid)
 int main(int argc, char **argv)
 {
 	int c;
-	int r;
+	// int r;
 	char *tmp;
 
-	int count;
+	// int count;
 	int verbose;
-	char *address;
+	// char *address;
 #ifdef SYSV_SEM
 	union semun su;
 #endif
 
 	/* init */
-	count = 0;
+	// count = 0;
 	verbose = 0;
-	address = 0;
-	int opterr = 0;
+	// address = 0;
+	// int opterr = 0;
 
 
 	opterr = 0;
@@ -349,12 +351,12 @@ int main(int argc, char **argv)
 			exit(-1);
 		}
 	}
-	atomic_thread_fence(memory_order_relaxed);
+	// atomic_thread_fence(memory_order_relaxed);
 
 	for(t = 0; t < NUM_THREADS; t++) {
 		pthread_join(threads[t], NULL);
 	}
-	printf("Final value should be \t\t%d\n", loopfor);
+	printf("Final value should be \t\t%d\n", count);
 	printf("Final value of shared variable: %d\n", shared_variable);
 
 	// printf("%d loops\n", count);
