@@ -2,12 +2,12 @@
 # $Id$
 #
 
-# NAME=locking_test
-NAME=locking_test_proccess
+NAME=locking_test
+# NAME=locking_test_proccess
 
 # CC=aarch64-linux-gnu-gcc
 CC=gcc
-CFLAGS= -O3 -Wall -std=c11
+CFLAGS= -O2 -Wall -std=c11
 DEFS= -D_DEFAULT_SOURCE -D__CPU_x86_64
 LIBS= -lrt
 INCLUDE=

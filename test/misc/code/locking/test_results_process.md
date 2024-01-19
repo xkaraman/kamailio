@@ -1,5 +1,7 @@
 
 # Ubuntu 5.4.0-169-generic (gcc)
+- gcc version 10.5.0 (Ubuntu 10.5.0-1ubuntu1~20.04)
+- -O3 -Wall -std=c11
 ## Params:
 - Num of proccess = 8
 - Num of iterations = 16000000
