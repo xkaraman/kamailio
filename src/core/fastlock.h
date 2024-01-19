@@ -61,7 +61,7 @@ typedef volatile int fl_lock_t;
 #elif defined(__CPU_sparc64)
 #ifndef NOSMP
 #define membar_getlock() \
-	asm volatile("membar #StoreStore | #StoreLoad \n\t" : : : "memory")
+	__asm__ volatile("membar #StoreStore | #StoreLoad \n\t" : : : "memory")
 /* can be either StoreStore|StoreLoad or LoadStore|LoadLoad
 	 * since ldstub acts both as a store and as a load */
 #else
@@ -81,14 +81,14 @@ typedef volatile int fl_lock_t;
 #elif defined __CPU_arm6
 #ifndef NOSMP
 #define membar_getlock() \
-	asm volatile("mcr p15, 0, %0, c7, c10, 5" : : "r"(0) : "memory")
+	__asm__ volatile("mcr p15, 0, %0, c7, c10, 5" : : "r"(0) : "memory")
 #else /* NOSMP */
 #define membar_getlock()
 #endif /* NOSMP */
 
 #elif defined __CPU_arm7
 #ifndef NOSMP
-#define membar_getlock() asm volatile("dmb" : : : "memory")
+#define membar_getlock() __asm__ volatile("dmb" : : : "memory")
 #else /* NOSMP */
 #define membar_getlock()
 #endif /* NOSMP */
@@ -101,14 +101,14 @@ typedef volatile int fl_lock_t;
 
 #elif defined(__CPU_ppc) || defined(__CPU_ppc64)
 #ifndef NOSMP
-#define membar_getlock() asm volatile("lwsync \n\t" : : : "memory");
+#define membar_getlock() __asm__ volatile("lwsync \n\t" : : : "memory");
 #else
 #define membar_getlock()
 #endif /* NOSMP */
 
 #elif defined __CPU_mips2 || defined __CPU_mips64
 #ifndef NOSMP
-#define membar_getlock() asm volatile("sync \n\t" : : : "memory");
+#define membar_getlock() __asm__ volatile("sync \n\t" : : : "memory");
 #else
 #define membar_getlock()
 #endif /* NOSMP */
@@ -121,7 +121,7 @@ typedef volatile int fl_lock_t;
 
 #elif defined __CPU_alpha
 #ifndef NOSMP
-#define membar_getlock() asm volatile("mb \n\t" : : : "memory");
+#define membar_getlock() __asm__ volatile("mb \n\t" : : : "memory");
 #else
 #define membar_getlock()
 #endif /* NOSMP */
@@ -142,14 +142,14 @@ inline static int tsl(fl_lock_t *lock)
 #if defined(__CPU_i386) || defined(__CPU_x86_64)
 
 #ifdef NOSMP
-	asm volatile(" xor %0, %0 \n\t"
-				 " btsl $0, %2 \n\t"
-				 " setc %b0 \n\t"
-				 : "=&q"(val), "=m"(*lock)
-				 : "m"(*lock)
-				 : "memory", "cc");
+	__asm__ volatile(" xor %0, %0 \n\t"
+					 " btsl $0, %2 \n\t"
+					 " setc %b0 \n\t"
+					 : "=&q"(val), "=m"(*lock)
+					 : "m"(*lock)
+					 : "memory", "cc");
 #else
-	asm volatile(
+	__asm__ volatile(
 #ifdef SPIN_OPTIMIZE
 			" cmpb $0, %2 \n\t"
 			" mov $1, %0 \n\t"
@@ -169,7 +169,7 @@ inline static int tsl(fl_lock_t *lock)
 	);
 #endif /*NOSMP*/
 #elif defined(__CPU_sparc64)
-	asm volatile(
+	__asm__ volatile(
 #ifdef SPIN_OPTIMIZE
 			"   ldub [%2], %0 \n\t"
 			"   brnz,a,pn %0, 1f \n\t"
@@ -182,7 +182,7 @@ inline static int tsl(fl_lock_t *lock)
 			: "r"(lock)
 			: "memory");
 #elif defined(__CPU_sparc)
-	asm volatile(
+	__asm__ volatile(
 #ifdef SPIN_OPTIMIZE
 			"   ldub [%2], %0 \n\t"
 			"   tst %0 \n\t"
@@ -201,79 +201,79 @@ inline static int tsl(fl_lock_t *lock)
 #endif
 	);
 #elif defined __CPU_arm
-	asm volatile("swp %0, %2, [%3] \n\t"
-				 : "=&r"(val), "=m"(*lock)
-				 : "r"(1), "r"(lock)
-				 : "memory");
+	__asm__ volatile("swp %0, %2, [%3] \n\t"
+					 : "=&r"(val), "=m"(*lock)
+					 : "r"(1), "r"(lock)
+					 : "memory");
 #elif defined __CPU_arm6 || defined __CPU_arm7
-	asm volatile("   ldrex %0, [%2] \n\t"
-				 "   cmp %0, #0 \n\t"
-				 "   strexeq %0, %3, [%2] \n\t" /* executed only if Z=1 */
-				 /* if %0!=0 => either it was 1 initially or was 0
+	__asm__ volatile("   ldrex %0, [%2] \n\t"
+					 "   cmp %0, #0 \n\t"
+					 "   strexeq %0, %3, [%2] \n\t" /* executed only if Z=1 */
+					 /* if %0!=0 => either it was 1 initially or was 0
 			 * and somebody changed it just before the strexeq (so the
 			 * lock is taken) => it's safe to return %0 */
-				 /* membar_getlock must be  called outside this function */
-				 : "=&r"(val), "=m"(*lock)
-				 : "r"(lock), "r"(1)
-				 : "cc");
+					 /* membar_getlock must be  called outside this function */
+					 : "=&r"(val), "=m"(*lock)
+					 : "r"(lock), "r"(1)
+					 : "cc");
 
 #elif defined __CPU_aarch64
 	int res = 0;
 	int one = 1;
-	asm volatile("1: ldaxr %w0, %2 \n\t"
-				 "   stlxr %w1, %w3, %2 \n\t"
-				 "   cbnz %w1, 1b \n\t"
-				 : "=&r"(val), "=&r"(res), "+Q"(*lock)
-				 : "r"(one)
-				 : "cc", "memory");
+	__asm__ volatile("1: ldaxr %w0, %2 \n\t"
+					 "   stlxr %w1, %w3, %2 \n\t"
+					 "   cbnz %w1, 1b \n\t"
+					 : "=&r"(val), "=&r"(res), "+Q"(*lock)
+					 : "r"(one)
+					 : "cc", "memory");
 
 
 #elif defined(__CPU_ppc) || defined(__CPU_ppc64)
-	asm volatile("1: \n\t"
+	__asm__ volatile("1: \n\t"
 #ifdef SPIN_OPTIMIZE
-				 "   lwzx %0, 0, %2 \n\t"
-				 "   cmpwi %0, 0 \n\t"
-				 "   bne- 2f \n\t" /* predict: not taken */
+					 "   lwzx %0, 0, %2 \n\t"
+					 "   cmpwi %0, 0 \n\t"
+					 "   bne- 2f \n\t" /* predict: not taken */
 #endif
-				 "   lwarx  %0, 0, %2\n\t"
-				 "   cmpwi  %0, 0\n\t"
-				 "   bne-    2f\n\t"
-				 "   stwcx. %3, 0, %2\n\t"
-				 "   bne-   1b\n\t"
-				 /* membar_getlock must be  called outside this function */
-				 "2:\n\t"
-				 : "=&r"(val), "=m"(*lock)
-				 : "r"(lock), "r"(1)
-				 : "memory", "cc");
+					 "   lwarx  %0, 0, %2\n\t"
+					 "   cmpwi  %0, 0\n\t"
+					 "   bne-    2f\n\t"
+					 "   stwcx. %3, 0, %2\n\t"
+					 "   bne-   1b\n\t"
+					 /* membar_getlock must be  called outside this function */
+					 "2:\n\t"
+					 : "=&r"(val), "=m"(*lock)
+					 : "r"(lock), "r"(1)
+					 : "memory", "cc");
 #elif defined __CPU_mips2 || (defined __CPU_mips && defined MIPS_HAS_LLSC) \
 		|| defined __CPU_mips64
 	long tmp;
 
-	asm volatile(".set push \n\t"
-				 ".set noreorder\n\t"
-				 ".set mips2 \n\t"
+	__asm__ volatile(".set push \n\t"
+					 ".set noreorder\n\t"
+					 ".set mips2 \n\t"
 #ifdef SPIN_OPTIMIZE
-				 "    lw %1, %2 \n\t"
-				 "    bne %1, $0, 2f \n\t"
-				 "    nop \n\t"
+					 "    lw %1, %2 \n\t"
+					 "    bne %1, $0, 2f \n\t"
+					 "    nop \n\t"
 #endif
-				 "1:  ll %1, %2   \n\t"
-				 "    bne %1, $0, 2f \n\t"
-				 "    li %0, 1 \n\t" /* delay slot */
-				 "    sc %0, %2  \n\t"
-				 "    beqz %0, 1b \n\t"
-				 "    nop \n\t"
-				 "2: \n\t"
-				 /* membar_getlock must be called outside this function */
-				 ".set pop\n\t"
-				 : "=&r"(tmp), "=&r"(val), "=m"(*lock)
-				 : "m"(*lock)
-				 : "memory");
+					 "1:  ll %1, %2   \n\t"
+					 "    bne %1, $0, 2f \n\t"
+					 "    li %0, 1 \n\t" /* delay slot */
+					 "    sc %0, %2  \n\t"
+					 "    beqz %0, 1b \n\t"
+					 "    nop \n\t"
+					 "2: \n\t"
+					 /* membar_getlock must be called outside this function */
+					 ".set pop\n\t"
+					 : "=&r"(tmp), "=&r"(val), "=m"(*lock)
+					 : "m"(*lock)
+					 : "memory");
 #elif defined __CPU_alpha
 	long tmp;
 	tmp = 0;
 	/* lock low bit set to 1 when the lock is hold and to 0 otherwise */
-	asm volatile(
+	__asm__ volatile(
 			"1:  ldl %0, %1   \n\t"
 			"    blbs %0, 2f  \n\t" /* optimization if locked */
 			"    ldl_l %0, %1 \n\t"
@@ -334,25 +334,25 @@ inline static void release_lock(fl_lock_t *lock)
 {
 #if defined(__CPU_i386)
 #ifdef NOSMP
-	asm volatile(" movb $0, %0 \n\t" : "=m"(*lock) : : "memory");
+	__asm__ volatile(" movb $0, %0 \n\t" : "=m"(*lock) : : "memory");
 #else  /* ! NOSMP */
 	int val;
 	/* a simple mov $0, (lock) does not force StoreStore ordering on all
 	   x86 versions and it doesn't seem to force LoadStore either */
-	asm volatile(" xchgb %b0, %1 \n\t"
-				 : "=q"(val), "=m"(*lock)
-				 : "0"(0)
-				 : "memory");
+	__asm__ volatile(" xchgb %b0, %1 \n\t"
+					 : "=q"(val), "=m"(*lock)
+					 : "0"(0)
+					 : "memory");
 #endif /* NOSMP */
 #elif defined(__CPU_x86_64)
-	asm volatile(
+	__asm__ volatile(
 			" movb $0, %0 \n\t" /* on amd64 membar StoreStore | LoadStore is
 							   implicit (at least on the same mem. type) */
 			: "=m"(*lock)
 			:
 			: "memory");
 #elif defined(__CPU_sparc64) || defined(__CPU_sparc)
-	asm volatile(
+	__asm__ volatile(
 #ifndef NOSMP
 #ifdef __CPU_sparc64
 			"membar #LoadStore | #StoreStore \n\t"
@@ -370,32 +370,32 @@ inline static void release_lock(fl_lock_t *lock)
 #endif
 	/* missuse membar_getlock */
 	membar_getlock();
-	asm volatile(" str %1, [%2] \n\r"
-				 : "=m"(*lock)
-				 : "r"(0), "r"(lock)
-				 : "cc", "memory");
+	__asm__ volatile(" str %1, [%2] \n\r"
+					 : "=m"(*lock)
+					 : "r"(0), "r"(lock)
+					 : "cc", "memory");
 #ifdef __CPU_arm6
 	/* drain store buffer: drain the per processor buffer into the L1 cache
 	   making all the changes visible to other processors */
-	asm volatile("mcr p15, 0, %0, c7, c10, 4 \n\r" /* DSB equiv. on arm6*/
-				 :
-				 : "r"(0)
-				 : "memory");
+	__asm__ volatile("mcr p15, 0, %0, c7, c10, 4 \n\r" /* DSB equiv. on arm6*/
+					 :
+					 : "r"(0)
+					 : "memory");
 #elif defined __CPU_arm7
 	/* drain store buffer: drain the per processor buffer into the L1 cache
 	   making all the changes visible to other processors */
-	asm volatile("dsb \n\r" : : : "memory");
+	__asm__ volatile("dsb \n\r" : : : "memory");
 #endif /* __CPU_arm6 / __CPU_arm7 */
 
 #elif defined __CPU_aarch64
 #ifndef NOSMP
 #warning arm* smp mode not supported (no membars), try compiling with -DNOSMP
 #endif
-	asm volatile(" stlr %w1, %0 \n\t" : "=Q"(*lock) : "r"(0) : "memory");
+	__asm__ volatile(" stlr %w1, %0 \n\t" : "=Q"(*lock) : "r"(0) : "memory");
 
 
 #elif defined(__CPU_ppc) || defined(__CPU_ppc64)
-	asm volatile(
+	__asm__ volatile(
 			/* "sync\n\t"  lwsync is faster and will work
 			 *             here too
 			 *             [IBM Prgramming Environments Manual, D.4.2.2]
@@ -407,23 +407,23 @@ inline static void release_lock(fl_lock_t *lock)
 			: "memory");
 #elif defined __CPU_mips2 || (defined __CPU_mips && defined MIPS_HAS_LLSC) \
 		|| defined __CPU_mips64
-	asm volatile(".set push \n\t"
-				 ".set noreorder \n\t"
-				 ".set mips2 \n\t"
+	__asm__ volatile(".set push \n\t"
+					 ".set noreorder \n\t"
+					 ".set mips2 \n\t"
 #ifndef NOSMP
 #ifdef __CPU_mips
 #warning mips1 smp mode not supported (no membars), try compiling with -DNOSMP
 #else
-				 "    sync \n\t"
+					 "    sync \n\t"
 #endif
 #endif
-				 "    sw $0, %0 \n\t"
-				 ".set pop \n\t"
-				 : "=m"(*lock)
-				 : /* no input */
-				 : "memory");
+					 "    sw $0, %0 \n\t"
+					 ".set pop \n\t"
+					 : "=m"(*lock)
+					 : /* no input */
+					 : "memory");
 #elif defined __CPU_alpha
-	asm volatile(
+	__asm__ volatile(
 #ifndef NOSMP
 			"    mb          \n\t"
 #endif
