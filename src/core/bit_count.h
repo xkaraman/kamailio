@@ -50,7 +50,7 @@ static inline int bit_count(unsigned int u)
 {
 	int v;
 
-	asm volatile(" popcnt %1, %0 " : "=r"(v) : "rm"(u));
+	__asm__ volatile(" popcnt %1, %0 " : "=r"(v) : "rm"(u));
 	return v;
 }
 

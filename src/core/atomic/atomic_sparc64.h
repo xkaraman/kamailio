@@ -49,7 +49,8 @@
 
 
 #ifdef NOSMP
-#define membar() asm volatile("" : : : "memory") /* gcc do not cache barrier*/
+#define membar() \
+	__asm__ volatile("" : : : "memory") /* gcc do not cache barrier*/
 #define membar_read() membar()
 #define membar_write() membar()
 #define membar_depends() \
@@ -86,21 +87,22 @@
 #define membar_read_atomic_setget() membar_read()
 #else /* SMP */
 #define membar()                                                            \
-	asm volatile(                                                           \
+	__asm__ volatile(                                                       \
 			"membar #LoadLoad | #LoadStore | #StoreStore | #StoreLoad \n\t" \
 			:                                                               \
 			:                                                               \
 			: "memory")
 
-#define membar_read() asm volatile("membar #LoadLoad \n\t" : : : "memory")
-#define membar_write() asm volatile("membar #StoreStore \n\t" : : : "memory")
+#define membar_read() __asm__ volatile("membar #LoadLoad \n\t" : : : "memory")
+#define membar_write() \
+	__asm__ volatile("membar #StoreStore \n\t" : : : "memory")
 #define membar_depends() \
 	do {                 \
 	} while(0) /* really empty, not even a cc bar. */
 #define membar_enter_lock() \
-	asm volatile("membar #StoreStore | #StoreLoad \n\t" : : : "memory");
+	__asm__ volatile("membar #StoreStore | #StoreLoad \n\t" : : : "memory");
 #define membar_leave_lock() \
-	asm volatile("membar #LoadStore | #StoreStore \n\t" : : : "memory");
+	__asm__ volatile("membar #LoadStore | #StoreStore \n\t" : : : "memory");
 /* membars after or before atomic_ops or atomic_setget -> use these or
  *  mb_<atomic_op_name>() if you need a memory barrier in one of these
  *  situations (on some archs where the atomic operations imply memory
@@ -143,10 +145,10 @@
 	inline static RET_TYPE atomic_##NAME##_##P_TYPE(volatile P_TYPE *var) \
 	{                                                                     \
 		P_TYPE ret, tmp;                                                  \
-		asm volatile(ATOMIC_ASM_OP_##P_TYPE(OP)                           \
-					 : "=&r"(ret), "=&r"(tmp), "=m"(*var)                 \
-					 : "r"(var)                                           \
-					 : "cc");                                             \
+		__asm__ volatile(ATOMIC_ASM_OP_##P_TYPE(OP)                       \
+						 : "=&r"(ret), "=&r"(tmp), "=m"(*var)             \
+						 : "r"(var)                                       \
+						 : "cc");                                         \
 		return RET_EXPR;                                                  \
 	}
 
@@ -157,10 +159,10 @@
 			volatile P_TYPE *var, P_TYPE v)                     \
 	{                                                           \
 		P_TYPE ret, tmp;                                        \
-		asm volatile(ATOMIC_ASM_OP_##P_TYPE(OP)                 \
-					 : "=&r"(ret), "=&r"(tmp), "=m"(*var)       \
-					 : "r"(var), "r"(v)                         \
-					 : "cc");                                   \
+		__asm__ volatile(ATOMIC_ASM_OP_##P_TYPE(OP)             \
+						 : "=&r"(ret), "=&r"(tmp), "=m"(*var)   \
+						 : "r"(var), "r"(v)                     \
+						 : "cc");                               \
 		return RET_EXPR;                                        \
 	}
 
@@ -171,10 +173,10 @@
 			volatile P_TYPE *var, P_TYPE v)                         \
 	{                                                               \
 		P_TYPE ret;                                                 \
-		asm volatile(OP "\n\t"                                      \
-					 : "=&r"(ret), "=m"(*var)                       \
-					 : "r"(var), "0"(v)                             \
-					 : "cc");                                       \
+		__asm__ volatile(OP "\n\t"                                  \
+						 : "=&r"(ret), "=m"(*var)                   \
+						 : "r"(var), "0"(v)                         \
+						 : "cc");                                   \
 		return RET_EXPR;                                            \
 	}
 
@@ -186,10 +188,10 @@
 			volatile P_TYPE *var, P_TYPE v1, P_TYPE v2)             \
 	{                                                               \
 		P_TYPE ret;                                                 \
-		asm volatile(OP "\n\t"                                      \
-					 : "=&r"(ret), "=m"(*var)                       \
-					 : "r"(var), "r"(v1), "0"(v2)                   \
-					 : "cc");                                       \
+		__asm__ volatile(OP "\n\t"                                  \
+						 : "=&r"(ret), "=m"(*var)                   \
+						 : "r"(var), "r"(v1), "0"(v2)               \
+						 : "cc");                                   \
 		return RET_EXPR;                                            \
 	}
 

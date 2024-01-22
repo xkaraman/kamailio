@@ -39,7 +39,8 @@
 		sr-dev@lists.kamailio.org
 
 #ifdef NOSMP
-#define membar() asm volatile("" : : : "memory") /* gcc do not cache barrier*/
+#define membar() \
+	__asm__ volatile("" : : : "memory") /* gcc do not cache barrier*/
 #define membar_read() membar()
 #define membar_write() membar()
 #define membar_depends() \
@@ -67,12 +68,12 @@
 
 #else
 
-#define membar() asm volatile("    mb \n\t" : : : "memory")
+#define membar() __asm__ volatile("    mb \n\t" : : : "memory")
 #define membar_read() membar()
-#define membar_write() asm volatile("    wmb \n\t" : : : "memory")
-#define membar_depends() asm volatile("mb \n\t" : : : "memory")
-#define membar_enter_lock() asm volatile("mb \n\t" : : : "memory")
-#define membar_leave_lock() asm volatile("mb \n\t" : : : "memory")
+#define membar_write() __asm__ volatile("    wmb \n\t" : : : "memory")
+#define membar_depends() __asm__ volatile("mb \n\t" : : : "memory")
+#define membar_enter_lock() __asm__ volatile("mb \n\t" : : : "memory")
+#define membar_leave_lock() __asm__ volatile("mb \n\t" : : : "memory")
 
 /* membars after or before atomic_ops or atomic_setget -> use these or
  *  mb_<atomic_op_name>() if you need a memory barrier in one of these
@@ -135,9 +136,9 @@
 	inline static RET_TYPE atomic_##NAME##_##P_TYPE(volatile P_TYPE *var) \
 	{                                                                     \
 		P_TYPE ret;                                                       \
-		asm volatile(ATOMIC_ASM_OP00_##P_TYPE(OP)                         \
-					 : "=&r"(ret), "=m"(*var)                             \
-					 : "m"(*var));                                        \
+		__asm__ volatile(ATOMIC_ASM_OP00_##P_TYPE(OP)                     \
+						 : "=&r"(ret), "=m"(*var)                         \
+						 : "m"(*var));                                    \
 		return RET_EXPR;                                                  \
 	}
 
@@ -148,9 +149,9 @@
 			volatile P_TYPE *var, P_TYPE v)                        \
 	{                                                              \
 		P_TYPE ret;                                                \
-		asm volatile(ATOMIC_ASM_OP01_##P_TYPE(OP)                  \
-					 : "=&r"(ret), "=r"(v), "=m"(*var)             \
-					 : "m"(*var), "1"(v));                         \
+		__asm__ volatile(ATOMIC_ASM_OP01_##P_TYPE(OP)              \
+						 : "=&r"(ret), "=r"(v), "=m"(*var)         \
+						 : "m"(*var), "1"(v));                     \
 		return RET_EXPR;                                           \
 	}
 #else
@@ -160,9 +161,9 @@
 			volatile P_TYPE *var, P_TYPE v)                        \
 	{                                                              \
 		P_TYPE ret;                                                \
-		asm volatile(ATOMIC_ASM_OP01_##P_TYPE(OP)                  \
-					 : "=&r"(ret), "+r"(v), "=m"(*var)             \
-					 : "m"(*var));                                 \
+		__asm__ volatile(ATOMIC_ASM_OP01_##P_TYPE(OP)              \
+						 : "=&r"(ret), "+r"(v), "=m"(*var)         \
+						 : "m"(*var));                             \
 		return RET_EXPR;                                           \
 	}
 #endif /* gcc && gcc version < 2.9 */
@@ -172,9 +173,9 @@
 	inline static RET_TYPE atomic_##NAME##_##P_TYPE(volatile P_TYPE *var) \
 	{                                                                     \
 		P_TYPE ret, tmp;                                                  \
-		asm volatile(ATOMIC_ASM_OP01_##P_TYPE(OP)                         \
-					 : "=&r"(ret), "=&r"(tmp), "=m"(*var)                 \
-					 : "m"(*var));                                        \
+		__asm__ volatile(ATOMIC_ASM_OP01_##P_TYPE(OP)                     \
+						 : "=&r"(ret), "=&r"(tmp), "=m"(*var)             \
+						 : "m"(*var));                                    \
 		return RET_EXPR;                                                  \
 	}
 
@@ -185,9 +186,9 @@
 			volatile P_TYPE *var, P_TYPE v)                        \
 	{                                                              \
 		P_TYPE ret;                                                \
-		asm volatile(ATOMIC_ASM_OP00_##P_TYPE(OP)                  \
-					 : "=&r"(ret), "=m"(*var)                      \
-					 : "m"(*var), "r"(v));                         \
+		__asm__ volatile(ATOMIC_ASM_OP00_##P_TYPE(OP)              \
+						 : "=&r"(ret), "=m"(*var)                  \
+						 : "m"(*var), "r"(v));                     \
 		return RET_EXPR;                                           \
 	}
 
@@ -195,18 +196,18 @@
 /* cmpxchg var in %1, old in %0, new_v in %
  * makes the xchg if old==*var
  * returns initial *var (so if ret==old => new_v was written into var)*/
-#define ATOMIC_CMPXCHG_DECL(NAME, P_TYPE)                              \
-	inline static P_TYPE atomic_##NAME##_##P_TYPE(                     \
-			volatile P_TYPE *var, P_TYPE old, P_TYPE new_v)            \
-	{                                                                  \
-		P_TYPE ret;                                                    \
-		P_TYPE tmp;                                                    \
-		asm volatile(ATOMIC_ASM_OP01_##P_TYPE(                         \
-				"subq  %0, %5, %2 \n\t bne %2, 3f") "3:    \n\t"       \
-					 : "=&r"(ret), "=&r"(new_v), "=r"(tmp), "=m"(*var) \
-					 : "m"(*var), "r"(old), "1"(new_v)                 \
-					 : "cc");                                          \
-		return ret;                                                    \
+#define ATOMIC_CMPXCHG_DECL(NAME, P_TYPE)                                  \
+	inline static P_TYPE atomic_##NAME##_##P_TYPE(                         \
+			volatile P_TYPE *var, P_TYPE old, P_TYPE new_v)                \
+	{                                                                      \
+		P_TYPE ret;                                                        \
+		P_TYPE tmp;                                                        \
+		__asm__ volatile(ATOMIC_ASM_OP01_##P_TYPE(                         \
+				"subq  %0, %5, %2 \n\t bne %2, 3f") "3:    \n\t"           \
+						 : "=&r"(ret), "=&r"(new_v), "=r"(tmp), "=m"(*var) \
+						 : "m"(*var), "r"(old), "1"(new_v)                 \
+						 : "cc");                                          \
+		return ret;                                                        \
 	}
 
 

@@ -64,10 +64,10 @@ static inline int bit_test(int offset, unsigned int *addr)
 {
 	unsigned char v;
 
-	asm volatile(" bt %2, %1 \n\t"
-				 " setc %0 \n\t"
-				 : "=qm"(v)
-				 : "m"(*addr), "r"(offset));
+	__asm__ volatile(" bt %2, %1 \n\t"
+					 " setc %0 \n\t"
+					 : "=qm"(v)
+					 : "m"(*addr), "r"(offset));
 	return (int)v;
 }
 
@@ -81,10 +81,10 @@ static inline int bit_test_and_set(int offset, unsigned int *addr)
 {
 	unsigned char v;
 
-	asm volatile(" bts %2, %1 \n\t"
-				 " setc %0 \n\t"
-				 : "=qm"(v)
-				 : "m"(*addr), "r"(offset));
+	__asm__ volatile(" bts %2, %1 \n\t"
+					 " setc %0 \n\t"
+					 : "=qm"(v)
+					 : "m"(*addr), "r"(offset));
 	return (int)v;
 }
 
@@ -98,10 +98,10 @@ static inline int bit_test_and_reset(int offset, unsigned int *addr)
 {
 	unsigned char v;
 
-	asm volatile(" btr %2, %1 \n\t"
-				 " setc %0 \n\t"
-				 : "=qm"(v)
-				 : "m"(*addr), "r"(offset));
+	__asm__ volatile(" btr %2, %1 \n\t"
+					 " setc %0 \n\t"
+					 : "=qm"(v)
+					 : "m"(*addr), "r"(offset));
 	return (int)v;
 }
 

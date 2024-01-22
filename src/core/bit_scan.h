@@ -374,14 +374,14 @@ static inline int bit_scan_reverse_br64(unsigned long long v)
 static inline int bit_scan_forward_asm32(unsigned int v)
 {
 	int r;
-	asm volatile(" bsfl %1, %0" : "=r"(r) : "rm"(v));
+	__asm__ volatile(" bsfl %1, %0" : "=r"(r) : "rm"(v));
 	return r;
 }
 
 static inline int bit_scan_reverse_asm32(unsigned int v)
 {
 	int r;
-	asm volatile(" bsrl %1, %0" : "=r"(r) : "rm"(v));
+	__asm__ volatile(" bsrl %1, %0" : "=r"(r) : "rm"(v));
 	return r;
 }
 
@@ -389,14 +389,14 @@ static inline int bit_scan_reverse_asm32(unsigned int v)
 static inline int bit_scan_forward_asm64(unsigned long long v)
 {
 	long r;
-	asm volatile(" bsfq %1, %0" : "=r"(r) : "rm"(v));
+	__asm__ volatile(" bsfq %1, %0" : "=r"(r) : "rm"(v));
 	return r;
 }
 
 static inline int bit_scan_reverse_asm64(unsigned long long v)
 {
 	long r;
-	asm volatile(" bsrq %1, %0" : "=r"(r) : "rm"(v));
+	__asm__ volatile(" bsrq %1, %0" : "=r"(r) : "rm"(v));
 	return r;
 }
 #else

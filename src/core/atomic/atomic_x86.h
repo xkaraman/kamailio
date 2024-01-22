@@ -49,7 +49,7 @@
 
 #ifdef NOSMP
 
-#define membar() asm volatile("" : : : "memory")
+#define membar() __asm__ volatile("" : : : "memory")
 #define membar_read() membar()
 #define membar_write() membar()
 #define membar_depends() \
@@ -90,30 +90,31 @@
 #ifdef __CPU_x86_64
 /*
 #define membar() \
-	asm volatile( \
+	__asm__ volatile( \
 					" lock; addq $0, 0(%%rsp) \n\t " \
 					: : : "memory" \
 				)
 */
-#define membar() asm volatile(" mfence \n\t " : : : "memory")
-#define membar_read() asm volatile(" lfence \n\t " : : : "memory")
+#define membar() __asm__ volatile(" mfence \n\t " : : : "memory")
+#define membar_read() __asm__ volatile(" lfence \n\t " : : : "memory")
 #ifdef X86_64_OOSTORE
-#define membar_write() asm volatile(" sfence \n\t " : : : "memory")
+#define membar_write() __asm__ volatile(" sfence \n\t " : : : "memory")
 #else
-#define membar_write() asm volatile("" : : : "memory") /* gcc don't cache*/
-#endif												   /* X86_OOSTORE */
+#define membar_write() __asm__ volatile("" : : : "memory") /* gcc don't cache*/
+#endif													   /* X86_OOSTORE */
 
 #else /* ! __CPU_x86_64  => __CPU_i386*/
 /* membar: lfence, mfence, sfence available only on newer cpus, so for now
  * stick to lock addl */
-#define membar() asm volatile(" lock; addl $0, 0(%%esp) \n\t " : : : "memory")
+#define membar() \
+	__asm__ volatile(" lock; addl $0, 0(%%esp) \n\t " : : : "memory")
 #define membar_read() membar()
 #ifdef X86_OOSTORE
 /* out of order store version */
 #define membar_write() membar()
 #else
 /* no oostore, most x86 cpus => do nothing, just a gcc do_not_cache barrier*/
-#define membar_write() asm volatile("" : : : "memory")
+#define membar_write() __asm__ volatile("" : : : "memory")
 #endif /* X86_OOSTORE */
 
 #endif /* __CPU_x86_64 */
@@ -155,21 +156,21 @@
 #define ATOMIC_FUNC_DECL1(NAME, OP, P_TYPE)                           \
 	inline static void atomic_##NAME##_##P_TYPE(volatile P_TYPE *var) \
 	{                                                                 \
-		asm volatile(__LOCK_PREF " " OP " \n\t"                       \
-					 : "=m"(*var)                                     \
-					 : "m"(*var)                                      \
-					 : "cc", "memory");                               \
+		__asm__ volatile(__LOCK_PREF " " OP " \n\t"                   \
+						 : "=m"(*var)                                 \
+						 : "m"(*var)                                  \
+						 : "cc", "memory");                           \
 	}
 
 /* 2 params atomic f */
-#define ATOMIC_FUNC_DECL2(NAME, OP, P_TYPE)      \
-	inline static void atomic_##NAME##_##P_TYPE( \
-			volatile P_TYPE *var, P_TYPE v)      \
-	{                                            \
-		asm volatile(__LOCK_PREF " " OP " \n\t"  \
-					 : "=m"(*var)                \
-					 : "ri"(v), "m"(*var)        \
-					 : "cc", "memory");          \
+#define ATOMIC_FUNC_DECL2(NAME, OP, P_TYPE)         \
+	inline static void atomic_##NAME##_##P_TYPE(    \
+			volatile P_TYPE *var, P_TYPE v)         \
+	{                                               \
+		__asm__ volatile(__LOCK_PREF " " OP " \n\t" \
+						 : "=m"(*var)               \
+						 : "ri"(v), "m"(*var)       \
+						 : "cc", "memory");         \
 	}
 
 #if defined __GNUC__ && __GNUC__ < 3 && __GNUC_MINOR__ < 9
@@ -177,18 +178,21 @@
 #define ATOMIC_FUNC_XCHG(NAME, OP, TYPE)                                  \
 	inline static TYPE atomic_##NAME##_##TYPE(volatile TYPE *var, TYPE v) \
 	{                                                                     \
-		asm volatile(OP " \n\t"                                           \
-					 : "=q"(v), "=m"(*var)                                \
-					 : "m"(*var), "0"(v)                                  \
-					 : "memory");                                         \
+		__asm__ volatile(OP " \n\t"                                       \
+						 : "=q"(v), "=m"(*var)                            \
+						 : "m"(*var), "0"(v)                              \
+						 : "memory");                                     \
 		return v;                                                         \
 	}
 #else
-#define ATOMIC_FUNC_XCHG(NAME, OP, TYPE)                                       \
-	inline static TYPE atomic_##NAME##_##TYPE(volatile TYPE *var, TYPE v)      \
-	{                                                                          \
-		asm volatile(OP " \n\t" : "+q"(v), "=m"(*var) : "m"(*var) : "memory"); \
-		return v;                                                              \
+#define ATOMIC_FUNC_XCHG(NAME, OP, TYPE)                                  \
+	inline static TYPE atomic_##NAME##_##TYPE(volatile TYPE *var, TYPE v) \
+	{                                                                     \
+		__asm__ volatile(OP " \n\t"                                       \
+						 : "+q"(v), "=m"(*var)                            \
+						 : "m"(*var)                                      \
+						 : "memory");                                     \
+		return v;                                                         \
 	}
 #endif /* gcc & gcc version < 2.9 */
 
@@ -197,11 +201,11 @@
 	inline static RET_TYPE atomic_##NAME##_##P_TYPE(volatile P_TYPE *var) \
 	{                                                                     \
 		char ret;                                                         \
-		asm volatile(__LOCK_PREF " " OP "\n\t"                            \
-								 "setz %1 \n\t"                           \
-					 : "=m"(*var), "=qm"(ret)                             \
-					 : "m"(*var)                                          \
-					 : "cc", "memory");                                   \
+		__asm__ volatile(__LOCK_PREF " " OP "\n\t"                        \
+									 "setz %1 \n\t"                       \
+						 : "=m"(*var), "=qm"(ret)                         \
+						 : "m"(*var)                                      \
+						 : "cc", "memory");                               \
 		return ret;                                                       \
 	}
 
@@ -214,10 +218,10 @@
 			volatile P_TYPE *var, P_TYPE old, P_TYPE new_v) \
 	{                                                       \
 		P_TYPE ret;                                         \
-		asm volatile(__LOCK_PREF " " OP "\n\t"              \
-					 : "=a"(ret), "=m"(*var)                \
-					 : "r"(new_v), "m"(*var), "0"(old)      \
-					 : "cc", "memory");                     \
+		__asm__ volatile(__LOCK_PREF " " OP "\n\t"          \
+						 : "=a"(ret), "=m"(*var)            \
+						 : "r"(new_v), "m"(*var), "0"(old)  \
+						 : "cc", "memory");                 \
 		return ret;                                         \
 	}
 
@@ -226,10 +230,10 @@
 	inline static TYPE atomic_##NAME##_##TYPE(volatile TYPE *var, TYPE v) \
 	{                                                                     \
 		TYPE ret;                                                         \
-		asm volatile(__LOCK_PREF " " OP " \n\t"                           \
-					 : "=r"(ret), "=m"(*var)                              \
-					 : "m"(*var), "0"(v)                                  \
-					 : "cc", "memory");                                   \
+		__asm__ volatile(__LOCK_PREF " " OP " \n\t"                       \
+						 : "=r"(ret), "=m"(*var)                          \
+						 : "m"(*var), "0"(v)                              \
+						 : "cc", "memory");                               \
 		return ret + v;                                                   \
 	}
 
@@ -309,15 +313,15 @@ inline static long mb_atomic_get_long(volatile long *v)
 
 inline static void mb_atomic_set_int(volatile int *v, int i)
 {
-	asm volatile("xchgl %1, %0 \n\t"
+	__asm__ volatile("xchgl %1, %0 \n\t"
 #if defined __GNUC__ && __GNUC__ < 3 && __GNUC_MINOR__ < 9
-				 : "=q"(i), "=m"(*v)
-				 : "m"(*v), "0"(i)
-				 : "memory"
+					 : "=q"(i), "=m"(*v)
+					 : "m"(*v), "0"(i)
+					 : "memory"
 #else
-				 : "+q"(i), "=m"(*v)
-				 : "m"(*v)
-				 : "memory"
+					 : "+q"(i), "=m"(*v)
+					 : "m"(*v)
+					 : "memory"
 #endif
 	);
 }
@@ -325,7 +329,7 @@ inline static void mb_atomic_set_int(volatile int *v, int i)
 
 inline static void mb_atomic_set_long(volatile long *v, long l)
 {
-	asm volatile(
+	__asm__ volatile(
 #ifdef __CPU_x86_64
 			"xchgq %1, %0 \n\t"
 #else
@@ -348,10 +352,10 @@ inline static int mb_atomic_get_int(volatile int *var)
 {
 	int ret;
 
-	asm volatile(__LOCK_PREF " cmpxchgl %0, %1 \n\t"
-				 : "=a"(ret)
-				 : "m"(*var)
-				 : "cc", "memory");
+	__asm__ volatile(__LOCK_PREF " cmpxchgl %0, %1 \n\t"
+					 : "=a"(ret)
+					 : "m"(*var)
+					 : "cc", "memory");
 	return ret;
 }
 
@@ -359,7 +363,7 @@ inline static long mb_atomic_get_long(volatile long *var)
 {
 	long ret;
 
-	asm volatile(
+	__asm__ volatile(
 #ifdef __CPU_x86_64
 			__LOCK_PREF " cmpxchgq %0, %1 \n\t"
 #else

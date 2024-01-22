@@ -35,21 +35,22 @@
 
 #ifdef NOSMP
 #define HAVE_ASM_INLINE_MEMBAR
-#define membar() asm volatile("" : : : "memory") /* gcc do not cache barrier*/
+#define membar() \
+	__asm__ volatile("" : : : "memory") /* gcc do not cache barrier*/
 
 #else /* SMP */
 
 #ifdef __CPU_arm7
 
 #define HAVE_ASM_INLINE_MEMBAR
-#define membar() asm volatile("dmb" : : : "memory")
+#define membar() __asm__ volatile("dmb" : : : "memory")
 
 #elif defined __CPU_arm6
 
 #define HAVE_ASM_INLINE_MEMBAR
 /* arm6 implements memory barriers using CP15 */
 #define membar() \
-	asm volatile("mcr p15, 0, %0, c7, c10, 5" : : "r"(0) : "memory")
+	__asm__ volatile("mcr p15, 0, %0, c7, c10, 5" : : "r"(0) : "memory")
 
 #else
 #warning SMP not supported for arm atomic ops, try compiling with -DNOSMP
@@ -119,10 +120,10 @@
 	inline static RET_TYPE atomic_##NAME##_##P_TYPE(volatile P_TYPE *var) \
 	{                                                                     \
 		P_TYPE ret, tmp;                                                  \
-		asm volatile(ATOMIC_ASM_OP(OP)                                    \
-					 : "=&r"(tmp), "=&r"(ret), "=m"(*var)                 \
-					 : "r"(var)                                           \
-					 : "cc");                                             \
+		__asm__ volatile(ATOMIC_ASM_OP(OP)                                \
+						 : "=&r"(tmp), "=&r"(ret), "=m"(*var)             \
+						 : "r"(var)                                       \
+						 : "cc");                                         \
 		return RET_EXPR;                                                  \
 	}
 
@@ -132,10 +133,10 @@
 			volatile P_TYPE *var, P_TYPE v)                     \
 	{                                                           \
 		P_TYPE ret, tmp;                                        \
-		asm volatile(ATOMIC_ASM_OP(OP)                          \
-					 : "=&r"(tmp), "=&r"(ret), "=m"(*var)       \
-					 : "r"(var), "r"(v)                         \
-					 : "cc");                                   \
+		__asm__ volatile(ATOMIC_ASM_OP(OP)                      \
+						 : "=&r"(tmp), "=&r"(ret), "=m"(*var)   \
+						 : "r"(var), "r"(v)                     \
+						 : "cc");                               \
 		return RET_EXPR;                                        \
 	}
 
@@ -146,23 +147,23 @@
 			volatile P_TYPE *var, P_TYPE v)                     \
 	{                                                           \
 		P_TYPE ret, tmp;                                        \
-		asm volatile(ATOMIC_ASM_OP2(OP)                         \
-					 : "=&r"(ret), "=&r"(tmp), "=m"(*var)       \
-					 : "r"(var), "r"(v)                         \
-					 : "cc");                                   \
+		__asm__ volatile(ATOMIC_ASM_OP2(OP)                     \
+						 : "=&r"(ret), "=&r"(tmp), "=m"(*var)   \
+						 : "r"(var), "r"(v)                     \
+						 : "cc");                               \
 		return RET_EXPR;                                        \
 	}
 
-#define ATOMIC_XCHG_DECL(NAME, P_TYPE)                    \
-	inline static P_TYPE atomic_##NAME##_##P_TYPE(        \
-			volatile P_TYPE *var, P_TYPE v)               \
-	{                                                     \
-		P_TYPE ret;                                       \
-		asm volatile(ATOMIC_ASM_OP2()                     \
-					 : "=&r"(ret), "=&r"(tmp), "=m"(*var) \
-					 : "r"(var), "r"(v)                   \
-					 : "cc");                             \
-		return ret;                                       \
+#define ATOMIC_XCHG_DECL(NAME, P_TYPE)                        \
+	inline static P_TYPE atomic_##NAME##_##P_TYPE(            \
+			volatile P_TYPE *var, P_TYPE v)                   \
+	{                                                         \
+		P_TYPE ret;                                           \
+		__asm__ volatile(ATOMIC_ASM_OP2()                     \
+						 : "=&r"(ret), "=&r"(tmp), "=m"(*var) \
+						 : "r"(var), "r"(v)                   \
+						 : "cc");                             \
+		return ret;                                           \
 	}
 
 /* old swp based version (doesn't work on arm7)
@@ -171,7 +172,7 @@
 														P_TYPE v ) \
 	{ \
 		P_TYPE ret; \
-		asm volatile( \
+		__asm__ volatile( \
 			"     swp %0, %2, [%3] \n\t" \
 			: "=&r"(ret),  "=m"(*var) :\
 				"r"(v), "r"(var) \
@@ -191,7 +192,7 @@
 			volatile P_TYPE *var, P_TYPE old, P_TYPE new_v)                         \
 	{                                                                               \
 		P_TYPE ret, tmp;                                                            \
-		asm volatile(                                                               \
+		__asm__ volatile(                                                           \
 				"1:   ldrex %0, [%3] \n\t"                                          \
 				"     cmp %0, %5 \n\t"                                              \
 				"     strexeq %1, %4, [%3] \n\t"                                    \

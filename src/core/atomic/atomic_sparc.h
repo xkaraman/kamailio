@@ -36,7 +36,8 @@
 #warning "sparc32 atomic operations support not tested"
 
 #ifdef NOSMP
-#define membar() asm volatile("" : : : "memory") /* gcc do not cache barrier*/
+#define membar() \
+	__asm__ volatile("" : : : "memory") /* gcc do not cache barrier*/
 #define membar_read() membar()
 #define membar_write() membar()
 #define membar_depends() \
@@ -62,16 +63,16 @@
 #define membar_read_atomic_op() membar_read()
 #define membar_read_atomic_setget() membar_read()
 #else /* SMP */
-#define membar_write() asm volatile("stbar \n\t" : : : "memory")
+#define membar_write() __asm__ volatile("stbar \n\t" : : : "memory")
 #define membar() membar_write()
-#define membar_read() asm volatile("" : : : "memory")
+#define membar_read() __asm__ volatile("" : : : "memory")
 #define membar_depends() \
 	do {                 \
 	} while(0) /* really empty, not even a cc bar. */
 #define membar_enter_lock() \
 	do {                    \
 	} while(0)
-#define membar_leave_lock() asm volatile("stbar \n\t" : : : "memory")
+#define membar_leave_lock() __asm__ volatile("stbar \n\t" : : : "memory")
 /* membars after or before atomic_ops or atomic_setget -> use these or
  *  mb_<atomic_op_name>() if you need a memory barrier in one of these
  *  situations (on some archs where the atomic operations imply memory

@@ -43,7 +43,8 @@
 
 
 #ifdef NOSMP
-#define membar() asm volatile("" : : : "memory") /* gcc do not cache barrier*/
+#define membar() \
+	__asm__ volatile("" : : : "memory") /* gcc do not cache barrier*/
 #define membar_read() membar()
 #define membar_write() membar()
 #define membar_depends() \
@@ -70,18 +71,18 @@
 #define membar_read_atomic_setget() membar_read()
 
 #else
-#define membar() asm volatile("sync \n\t" : : : "memory")
+#define membar() __asm__ volatile("sync \n\t" : : : "memory")
 /* lwsync orders LoadLoad, LoadStore and StoreStore */
-#define membar_read() asm volatile("lwsync \n\t" : : : "memory")
+#define membar_read() __asm__ volatile("lwsync \n\t" : : : "memory")
 /* on "normal" cached mem. eieio orders StoreStore */
-#define membar_write() asm volatile("eieio \n\t" : : : "memory")
+#define membar_write() __asm__ volatile("eieio \n\t" : : : "memory")
 #define membar_depends() \
 	do {                 \
 	} while(0) /* really empty, not even a cc bar. */
-#define membar_enter_lock() asm volatile("lwsync \n\t" : : : "memory")
+#define membar_enter_lock() __asm__ volatile("lwsync \n\t" : : : "memory")
 /* for unlock lwsync will work too and is faster than sync
  *  [IBM Prgramming Environments Manual, D.4.2.2] */
-#define membar_leave_lock() asm volatile("lwsync \n\t" : : : "memory")
+#define membar_leave_lock() __asm__ volatile("lwsync \n\t" : : : "memory")
 /* membars after or before atomic_ops or atomic_setget -> use these or
  *  mb_<atomic_op_name>() if you need a memory barrier in one of these
  *  situations (on some archs where the atomic operations imply memory
@@ -133,10 +134,10 @@
 	inline static RET_TYPE atomic_##NAME##_##P_TYPE(volatile P_TYPE *var) \
 	{                                                                     \
 		P_TYPE ret;                                                       \
-		asm volatile(ATOMIC_ASM_OP0_##P_TYPE(OP)                          \
-					 : "=&r"(ret), "=m"(*var)                             \
-					 : "r"(var)                                           \
-					 : "cc");                                             \
+		__asm__ volatile(ATOMIC_ASM_OP0_##P_TYPE(OP)                      \
+						 : "=&r"(ret), "=m"(*var)                         \
+						 : "r"(var)                                       \
+						 : "cc");                                         \
 		return RET_EXPR;                                                  \
 	}
 
@@ -146,10 +147,10 @@
 			volatile P_TYPE *var, P_TYPE v)                     \
 	{                                                           \
 		P_TYPE ret;                                             \
-		asm volatile(ATOMIC_ASM_OP0_##P_TYPE(OP)                \
-					 : "=&r"(ret), "=m"(*var)                   \
-					 : "r"(var), "r"(v)                         \
-					 : "cc");                                   \
+		__asm__ volatile(ATOMIC_ASM_OP0_##P_TYPE(OP)            \
+						 : "=&r"(ret), "=m"(*var)               \
+						 : "r"(var), "r"(v)                     \
+						 : "cc");                               \
 		return RET_EXPR;                                        \
 	}
 
@@ -159,24 +160,24 @@
 			volatile P_TYPE *var, P_TYPE v)                     \
 	{                                                           \
 		P_TYPE ret;                                             \
-		asm volatile(ATOMIC_ASM_OP3_##P_TYPE(OP)                \
-					 : "=&r"(ret), "=m"(*var)                   \
-					 : "r"(var), "r"(v)                         \
-					 : "cc");                                   \
+		__asm__ volatile(ATOMIC_ASM_OP3_##P_TYPE(OP)            \
+						 : "=&r"(ret), "=m"(*var)               \
+						 : "r"(var), "r"(v)                     \
+						 : "cc");                               \
 		return RET_EXPR;                                        \
 	}
 
 /* cmpxchg, %3=var, %0=*var, %4=old, %3=new  */
-#define ATOMIC_CMPXCHG_DECL(NAME, P_TYPE)                                \
-	inline static P_TYPE atomic_##NAME##_##P_TYPE(                       \
-			volatile P_TYPE *var, P_TYPE old, P_TYPE new_v)              \
-	{                                                                    \
-		P_TYPE ret;                                                      \
-		asm volatile(ATOMIC_ASM_OP3_##P_TYPE("cmpw %0, %4 \n\t bne- 2f") \
-					 : "=&r"(ret), "=m"(*var)                            \
-					 : "r"(var), "r"(new_v), "r"(old)                    \
-					 : "cc");                                            \
-		return ret;                                                      \
+#define ATOMIC_CMPXCHG_DECL(NAME, P_TYPE)                                    \
+	inline static P_TYPE atomic_##NAME##_##P_TYPE(                           \
+			volatile P_TYPE *var, P_TYPE old, P_TYPE new_v)                  \
+	{                                                                        \
+		P_TYPE ret;                                                          \
+		__asm__ volatile(ATOMIC_ASM_OP3_##P_TYPE("cmpw %0, %4 \n\t bne- 2f") \
+						 : "=&r"(ret), "=m"(*var)                            \
+						 : "r"(var), "r"(new_v), "r"(old)                    \
+						 : "cc");                                            \
+		return ret;                                                          \
 	}
 
 
