@@ -201,7 +201,7 @@ static void destroy(void)
 		}
 	}
 
-	if(fo_prefix_buf) {
+	if(fo_prefix_buf != NULL) {
 		pkg_free(fo_prefix_buf);
 	}
 
