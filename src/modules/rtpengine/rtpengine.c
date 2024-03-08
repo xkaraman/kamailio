@@ -1376,6 +1376,12 @@ static void rtpengine_dtmf_events_loop(void)
 			LM_ERR("problem reading on socket %s:%u (%s:%d)\n",
 					rtpengine_dtmf_event_sock.s, port, strerror(errno), errno);
 			goto end;
+		} else {
+			if(ret < RTPENGINE_DTMF_EVENT_BUFFER) {
+				buffer[ret] = '\0';
+			} else {
+				buffer[RTPENGINE_DTMF_EVENT_BUFFER - 1] = '\0';
+			}
 		}
 
 		if(dtmf_event_rt == -1) {
@@ -1385,7 +1391,7 @@ static void rtpengine_dtmf_events_loop(void)
 
 		p = shm_malloc(ret + 1);
 		if(!p) {
-			LM_ERR("could not allocate %d for buffer %.*s\n", ret, ret, buffer);
+			LM_ERR("could not allocate %d for buffer %s\n", ret, buffer);
 			goto end;
 		}
 		memcpy(p, buffer, ret);
