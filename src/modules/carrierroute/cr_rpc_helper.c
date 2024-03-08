@@ -133,7 +133,7 @@ static int update_route_data_recursor(
 						if(opts->new_host.len > 0) {
 							LM_INFO("deactivating host %.*s\n", rr->host.len,
 									rr->host.s);
-							if(opts->new_host.s
+							if(opts->new_host.s && rr->host.s
 									&& (strcmp(opts->new_host.s, rr->host.s)
 											== 0)) {
 								LM_ERR("Backup host the same as initial host "
@@ -152,7 +152,8 @@ static int update_route_data_recursor(
 								}
 							} else {
 								errno = 0;
-								hash = strtol(opts->new_host.s, NULL, 10);
+								if(opts->new_host.s)
+									hash = strtol(opts->new_host.s, NULL, 10);
 								if(errno == EINVAL || errno == ERANGE) {
 									if((backup = find_rule_by_hash(rf, hash))
 											== NULL) {
