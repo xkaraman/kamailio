@@ -25,6 +25,7 @@
 #include "../../core/pvar.h"
 
 #define FO_MAX_FILES 10 /* Maximum number of files */
+#define FO_MAX_PATH_LEN 2048
 
 typedef struct log_message
 {
@@ -63,6 +64,7 @@ typedef struct fo_file_properties
 	FILE *fo_file_output;
 } fo_file_properties_t;
 
+int fo_file_properties_init(fo_file_properties_t *fp);
 int fo_file_properties_destroy(fo_file_properties_t *fp);
 int fo_file_properties_print(const fo_file_properties_t file_prop);
 
