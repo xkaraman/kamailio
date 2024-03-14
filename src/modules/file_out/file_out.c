@@ -245,6 +245,7 @@ static int fo_rotate_file(int index)
 	}
 	lock_get(fo_properties_lock);
 	fo_files[index].fo_stored_timestamp = time(NULL);
+	fo_files[index].fo_requires_rotation = 1;
 	lock_release(fo_properties_lock);
 	return 1;
 }
@@ -297,7 +298,6 @@ static void fo_log_writer_process(int rank)
 				LM_ERR("Failed to flush file with err {%s}\n", strerror(errno));
 			}
 		}
-		fo_close_file(log_message.dest_file);
 		lock_release(fo_properties_lock);
 
 		if(log_message.prefix != NULL) {
@@ -546,7 +546,7 @@ static int fo_close_file(const int index)
 			return -1;
 		}
 		fo_files[index].fo_file_output = NULL;
-		// LM_DBG("Closed file %d\n", index);
+		LM_DBG("Closed file %d\n", index);
 	}
 	return 1;
 }
@@ -574,11 +574,12 @@ static int fo_check_interval(int index)
  */
 static FILE *fo_get_file_handle(const int index)
 {
-	if(fo_files[index].fo_file_output == NULL) {
-		if(fo_init_file(index) < 0) {
-			LM_ERR("Couldn't open file %s\n", strerror(errno));
-			return NULL;
-		}
+	if(fo_files[index].fo_requires_rotation == 1) {
+		fo_close_file(index);
+		fo_init_file(index);
+		lock_get(fo_properties_lock);
+		fo_files[index].fo_requires_rotation = 0;
+		lock_release(fo_properties_lock);
 	}
 	return fo_files[index].fo_file_output;
 }
