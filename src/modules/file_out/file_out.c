@@ -271,7 +271,7 @@ static void fo_log_writer_process(int rank)
 			return;
 		}
 		if(log_message.message != NULL) {
-			lock_get(fo_properties_lock);
+			// lock_get(fo_properties_lock);
 			out = fo_get_file_handle(log_message.dest_file);
 
 			if(out == NULL) {
@@ -298,7 +298,7 @@ static void fo_log_writer_process(int rank)
 				LM_ERR("Failed to flush file with err {%s}\n", strerror(errno));
 			}
 		}
-		lock_release(fo_properties_lock);
+		// lock_release(fo_properties_lock);
 
 		if(log_message.prefix != NULL) {
 			if(log_message.prefix->s != NULL) {
@@ -533,6 +533,7 @@ static int fo_init_file(const int index)
 		LM_ERR("Couldn't open file %s\n", strerror(errno));
 		return -1;
 	}
+
 	return 1;
 }
 
@@ -577,9 +578,9 @@ static FILE *fo_get_file_handle(const int index)
 	if(fo_files[index].fo_requires_rotation == 1) {
 		fo_close_file(index);
 		fo_init_file(index);
-		lock_get(fo_properties_lock);
+		// lock_get(fo_properties_lock);
 		fo_files[index].fo_requires_rotation = 0;
-		lock_release(fo_properties_lock);
+		// lock_release(fo_properties_lock);
 	}
 	return fo_files[index].fo_file_output;
 }
@@ -623,12 +624,8 @@ static int fo_write_to_file(sip_msg_t *msg, char *index, char *log_message)
 		return -1;
 	}
 
-	fo_prefix_str.s = fo_prefix_buf;
-	fo_prefix_str.len = buf_size;
-	if(pv_printf(msg, fo_files[file_index].fo_prefix_pvs, fo_prefix_str.s,
-			   &fo_prefix_str.len)
-					== 0
-			&& fo_prefix_str.len > 0) {
+	if(pv_printf_s(msg, fo_files[file_index].fo_prefix_pvs, &fo_prefix_str)
+			== 0) {
 		fo_prefix_val.s = fo_prefix_str.s;
 		fo_prefix_val.len = fo_prefix_str.len;
 	}
