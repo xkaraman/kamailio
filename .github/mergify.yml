@@ -11,4 +11,4 @@ pull_request_rules:
           (cherry picked from commit {{ c.sha }})
           {% endfor %}
         branches:
-          - 5.8
+          - "5.8"
