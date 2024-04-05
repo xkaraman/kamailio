@@ -2120,6 +2120,15 @@ int tcp_send(struct dest_info *dst, union sockaddr_union *from, const char *buf,
 			}
 		}
 	}
+
+	/* Make sure to also match the protocol */
+	if(unlikely(c && (c->rcv.proto != proto))) {
+		LM_ERR("connection wrong protocol\n");
+		/* Decrease ref count */
+		tcpconn_chld_put(c);
+		c = 0;
+	}
+
 	/* connection not found or unusable => open a new one and send on it */
 	if(unlikely((c == 0) || tcpconn_close_after_send(c))) {
 		if(unlikely(c)) {
