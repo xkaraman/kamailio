@@ -2994,9 +2994,10 @@ char *via_builder(unsigned int *len, sip_msg_t *msg,
 		port = su_getport(&send_info->to);
 		if(likely(port)) {
 			su2ip_addr(&ip, &send_info->to);
-			con = tcpconn_get(send_info->id, &ip, port, from, 0);
+			con = tcpconn_get(
+					send_info->id, &ip, port, from, 0, send_info->proto);
 		} else if(likely(send_info->id))
-			con = tcpconn_get(send_info->id, 0, 0, 0, 0);
+			con = tcpconn_get(send_info->id, 0, 0, 0, 0, PROTO_NONE);
 		else {
 			LM_CRIT("null_id & to\n");
 			pkg_free(line_buf);
