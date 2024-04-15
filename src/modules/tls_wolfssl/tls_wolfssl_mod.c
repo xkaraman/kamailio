@@ -431,7 +431,7 @@ static int ki_is_peer_verified(sip_msg_t *msg)
 	LM_DBG("trying to find TCP connection of received message...\n");
 
 	c = tcpconn_get(msg->rcv.proto_reserved1, 0, 0, 0,
-			cfg_get(tls, tls_cfg, con_lifetime));
+			cfg_get(tls, tls_cfg, con_lifetime), msg->rcv.proto);
 	if(!c) {
 		LM_ERR("connection no longer exists\n");
 		return -1;
