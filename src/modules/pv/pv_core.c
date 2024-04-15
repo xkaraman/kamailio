@@ -2927,7 +2927,10 @@ int pv_get_tcpconn_id(struct sip_msg *msg, pv_param_t *param, pv_value_t *res)
 	if(msg == NULL)
 		return -1;
 
-	if((con = tcpconn_get(msg->rcv.proto_reserved1, 0, 0, 0, 0)) == NULL)
+	// TODO: msg.rcv.proto is char, but tcpconn_get expects int
+	// Should we use PROTO_ANY or cast it somehow?
+	if((con = tcpconn_get(msg->rcv.proto_reserved1, 0, 0, 0, 0, msg->rcv.proto))
+			== NULL)
 		return pv_get_null(msg, param, res);
 
 	conid = con->id;
