@@ -1822,13 +1822,14 @@ struct tcp_connection *tcpconn_lookup(int id, struct ip_addr *ip, int port,
 /* TCP connection find with locks and timeout
  * - local_addr contains the desired local ip:port. If null any local address
  * will be used.  IN*ADDR_ANY or 0 port are wild cards.
+ * - proto contains the protocol to match (PROTO_NONE for any).
  * If found, the connection's reference counter will be incremented, you might
  * want to decrement it after use.
  */
 struct tcp_connection *tcpconn_get(int id, struct ip_addr *ip, int port,
-		union sockaddr_union *local_addr, ticks_t timeout)
+		union sockaddr_union *local_addr, ticks_t timeout, sip_protos_t proto)
 {
-	return tcpconn_lookup(id, ip, port, local_addr, 0, timeout, PROTO_NONE);
+	return tcpconn_lookup(id, ip, port, local_addr, 0, timeout, proto);
 }
 
 
@@ -2098,10 +2099,10 @@ int tcp_send(struct dest_info *dst, union sockaddr_union *from, const char *buf,
 			c = tcpconn_lookup(dst->id, &ip, port, from, try_local_port,
 					con_lifetime, dst->proto);
 		} else {
-			c = tcpconn_get(dst->id, &ip, port, from, con_lifetime);
+			c = tcpconn_get(dst->id, &ip, port, from, con_lifetime, dst->proto);
 		}
 	} else if(likely(dst->id)) {
-		c = tcpconn_get(dst->id, 0, 0, 0, con_lifetime);
+		c = tcpconn_get(dst->id, 0, 0, 0, con_lifetime, PROTO_NONE);
 	} else {
 		LM_CRIT("null id & to\n");
 		return -1;
@@ -2115,7 +2116,8 @@ int tcp_send(struct dest_info *dst, union sockaddr_union *from, const char *buf,
 					c = tcpconn_lookup(0, &ip, port, from, try_local_port,
 							con_lifetime, dst->proto);
 				} else {
-					c = tcpconn_get(0, &ip, port, from, con_lifetime);
+					c = tcpconn_get(
+							0, &ip, port, from, con_lifetime, dst->proto);
 				}
 			} else {
 				LM_ERR("id %d not found, dropping\n", dst->id);
@@ -5437,10 +5439,10 @@ int wss_send(dest_info_t *dst, const char *buf, unsigned len)
 						(dst->send_sock) ? dst->send_sock->port_no : 0, 0,
 						dst->proto);
 			} else {
-				con = tcpconn_get(dst->id, &ip, port, from, 0);
+				con = tcpconn_get(dst->id, &ip, port, from, 0, dst->proto);
 			}
 		} else if(likely(dst->id))
-			con = tcpconn_get(dst->id, 0, 0, 0, 0);
+			con = tcpconn_get(dst->id, 0, 0, 0, 0, PROTO_NONE);
 		else {
 			LM_CRIT("null_id & to\n");
 			goto error;
@@ -5531,7 +5533,7 @@ void tcp_timer_check_connections(unsigned int ticks, void *param)
 		TCPCONN_UNLOCK;
 		if(n > 0) {
 			for(i = 0; i < n; i++) {
-				if((con = tcpconn_get(tcpidlist[i], 0, 0, 0, 0))) {
+				if((con = tcpconn_get(tcpidlist[i], 0, 0, 0, 0, PROTO_NONE))) {
 					LM_CRIT("message processing timeout on connection id: %d "
 							"(state: %d) - "
 							"closing\n",

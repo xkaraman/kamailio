@@ -404,7 +404,7 @@ static inline unsigned tcp_addr_hash(struct ip_addr *ip, unsigned short port,
 #define tcp_id_hash(id) (id & (TCP_ID_HASH_SIZE - 1))
 
 struct tcp_connection *tcpconn_get(int id, struct ip_addr *ip, int port,
-		union sockaddr_union *local_addr, ticks_t timeout);
+		union sockaddr_union *local_addr, ticks_t timeout, sip_protos_t proto);
 
 struct tcp_connection *tcpconn_lookup(int id, struct ip_addr *ip, int port,
 		union sockaddr_union *local_addr, int try_local_port, ticks_t timeout,
