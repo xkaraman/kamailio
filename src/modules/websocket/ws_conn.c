@@ -378,7 +378,7 @@ end:
 
 void wsconn_close_now(ws_connection_t *wsc)
 {
-	struct tcp_connection *con = tcpconn_get(wsc->id, 0, 0, 0, 0);
+	struct tcp_connection *con = tcpconn_get(wsc->id, 0, 0, 0, 0, PROTO_NONE);
 
 	if(wsconn_rm(wsc, WSCONN_EVENTROUTE_YES) < 0)
 		LM_ERR("removing WebSocket connection\n");
@@ -699,7 +699,7 @@ void ws_timer(unsigned int ticks, void *param)
 				wsc->id_next = rmlist.head;
 				rmlist.head = wsc;
 			} else if(wsc->state != WS_S_REMOVING) {
-				con = tcpconn_get(wsc->id, 0, 0, 0, 0);
+				con = tcpconn_get(wsc->id, 0, 0, 0, 0, PROTO_NONE);
 				if(con == NULL) {
 					LM_DBG("ws structure without active tcp connection\n");
 					wsc->state = WS_S_REMOVING;
@@ -726,7 +726,7 @@ static int ws_rpc_add_node(
 	int interval;
 	char *src_proto, *dst_proto, *pong, *sub_protocol;
 	char src_ip[IP6_MAX_STR_SIZE + 1], dst_ip[IP6_MAX_STR_SIZE + 1];
-	struct tcp_connection *con = tcpconn_get(wsc->id, 0, 0, 0, 0);
+	struct tcp_connection *con = tcpconn_get(wsc->id, 0, 0, 0, 0, PROTO_NONE);
 	char rplbuf[512];
 
 	if(con) {

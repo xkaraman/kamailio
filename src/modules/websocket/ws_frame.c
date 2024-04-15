@@ -227,7 +227,7 @@ static int encode_and_send_ws_frame(ws_frame_t *frame, conn_close_t conn_close)
 	}
 	memcpy(&send_buf[pos], frame->payload_data, frame->payload_len);
 
-	if((con = tcpconn_get(frame->wsc->id, 0, 0, 0, 0)) == NULL) {
+	if((con = tcpconn_get(frame->wsc->id, 0, 0, 0, 0, PROTO_NONE)) == NULL) {
 		LM_WARN("TCP/TLS connection get failed\n");
 		pkg_free(send_buf);
 		if(wsconn_rm(frame->wsc, WSCONN_EVENTROUTE_YES) < 0)
@@ -819,7 +819,8 @@ void ws_keepalive(unsigned int ticks, void *param)
 						   "keepalive\n",
 							wsc->id, wsc);
 				} else {
-					tcp_connection_t *con = tcpconn_get(wsc->id, 0, 0, 0, 0);
+					tcp_connection_t *con =
+							tcpconn_get(wsc->id, 0, 0, 0, 0, PROTO_NONE);
 					if(con == NULL) {
 						LM_INFO("tcp connection has been lost (id: %d wsc: "
 								"%p)\n",

@@ -139,7 +139,8 @@ int ws_handle_handshake(struct sip_msg *msg)
 	}
 
 	/* Retrieve TCP/TLS connection */
-	if((con = tcpconn_get(msg->rcv.proto_reserved1, 0, 0, 0, 0)) == NULL) {
+	if((con = tcpconn_get(msg->rcv.proto_reserved1, 0, 0, 0, 0, PROTO_NONE))
+			== NULL) {
 		LM_ERR("retrieving connection\n");
 		ws_send_reply(msg, 500, &str_status_internal_server_error, NULL);
 		return 0;
