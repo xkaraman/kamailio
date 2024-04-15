@@ -101,7 +101,7 @@ static int reg_lookup_filter_match(ucontact_t *ptr)
 
 	if(reg_lookup_filter_mode & REG_LOOKUP_FILTER_TCPCON) {
 		if(ptr->tcpconn_id > 0) {
-			con = tcpconn_get(ptr->tcpconn_id, 0, 0, 0, 0);
+			con = tcpconn_get(ptr->tcpconn_id, 0, 0, 0, 0, PROTO_NONE);
 			if(unlikely(con == NULL)) {
 				LM_DBG("connection id %d does not exist\n", ptr->tcpconn_id);
 				return 0;
