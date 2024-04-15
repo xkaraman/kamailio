@@ -996,7 +996,8 @@ static int ki_kx_get_conid(sip_msg_t *msg)
 	if(msg == NULL)
 		return -1;
 
-	if((con = tcpconn_get(msg->rcv.proto_reserved1, 0, 0, 0, 0)) == NULL)
+	if((con = tcpconn_get(msg->rcv.proto_reserved1, 0, 0, 0, 0, PROTO_NONE))
+			== NULL)
 		return -1;
 
 	conid = con->id;
