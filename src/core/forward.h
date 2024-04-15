@@ -191,10 +191,10 @@ static inline int msg_send_buffer(
 						(dst->send_sock) ? dst->send_sock->port_no : 0, 0,
 						dst->proto);
 			} else {
-				con = tcpconn_get(dst->id, &ip, port, from, 0);
+				con = tcpconn_get(dst->id, &ip, port, from, 0, dst->proto);
 			}
 		} else if(likely(dst->id))
-			con = tcpconn_get(dst->id, 0, 0, 0, 0);
+			con = tcpconn_get(dst->id, 0, 0, 0, 0, PROTO_NONE);
 		else {
 			LM_CRIT("null_id & to\n");
 			goto error;
