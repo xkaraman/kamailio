@@ -230,7 +230,7 @@ int is_tcp_alive(ucontact_t *c)
 	struct tcp_connection *con = NULL;
 	int rc = 0;
 
-	if((con = tcpconn_get(c->tcpconn_id, 0, 0, 0, 0))) {
+	if((con = tcpconn_get(c->tcpconn_id, 0, 0, 0, 0, PROTO_NONE))) {
 		tcpconn_put(con); /* refcnt-- */
 		rc = 1;
 	}
@@ -249,7 +249,7 @@ static inline int close_connection(int conid)
 	struct tcp_connection *con;
 	long msg[2];
 	int n;
-	if((con = tcpconn_get(conid, 0, 0, 0, 0))) {
+	if((con = tcpconn_get(conid, 0, 0, 0, 0, PROTO_NONE))) {
 		msg[0] = (long)con;
 		msg[1] = CONN_EOF;
 
