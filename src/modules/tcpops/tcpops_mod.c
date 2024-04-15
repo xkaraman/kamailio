@@ -344,7 +344,9 @@ static int ki_tcp_conid_state(sip_msg_t *msg, int i_conid)
 	struct tcp_connection *s_con;
 	int ret = -1;
 
-	if(unlikely((s_con = tcpconn_get(i_conid, 0, 0, 0, 0)) == NULL)) {
+	// Should we use PROTO_NONE or cast it somehow?
+	if(unlikely((s_con = tcpconn_get(i_conid, 0, 0, 0, 0, PROTO_NONE))
+				== NULL)) {
 		LM_DBG("Connection id %d does not exist.\n", i_conid);
 		ret = -1;
 		goto done;
@@ -426,7 +428,9 @@ static int ki_tcpops_set_connection_lifetime_cid(
 	struct tcp_connection *s_con;
 	int ret = -1;
 
-	if(unlikely((s_con = tcpconn_get(i_conid, 0, 0, 0, 0)) == NULL)) {
+	// Should we use PROTO_NONE or cast it somehow?
+	if(unlikely((s_con = tcpconn_get(i_conid, 0, 0, 0, 0, PROTO_NONE))
+				== NULL)) {
 		LM_ERR("invalid connection id %d, (must be a TCP conid)\n", i_conid);
 		return 0;
 	} else {
@@ -456,7 +460,9 @@ static int ki_tcpops_set_connection_lifetime(sip_msg_t *msg, int i_time)
 		return -1;
 	}
 
-	if(unlikely((s_con = tcpconn_get(msg->rcv.proto_reserved1, 0, 0, 0, 0))
+	// Should we use PROTO_NONE or cast it somehow?
+	if(unlikely((s_con = tcpconn_get(
+						 msg->rcv.proto_reserved1, 0, 0, 0, 0, PROTO_NONE))
 				== NULL)) {
 		return -1;
 	} else {
@@ -477,7 +483,9 @@ static int ki_tcpops_enable_closed_event_cid(sip_msg_t *msg, int i_conid)
 {
 	struct tcp_connection *s_con;
 
-	if(unlikely((s_con = tcpconn_get(i_conid, 0, 0, 0, 0)) == NULL)) {
+	// Should we use PROTO_NONE or cast it somehow?
+	if(unlikely((s_con = tcpconn_get(i_conid, 0, 0, 0, 0, PROTO_NONE))
+				== NULL)) {
 		LM_ERR("invalid connection id %d, (must be a TCP conid)\n", i_conid);
 		return 0;
 	} else {
@@ -510,7 +518,10 @@ static int ki_tcpops_enable_closed_event(sip_msg_t *msg)
 		return -1;
 	}
 
-	if(unlikely((s_con = tcpconn_get(msg->rcv.proto_reserved1, 0, 0, 0, 0))
+	// The above comparison seems to be enough
+	// Should we use PROTO_NONE or cast it somehow?
+	if(unlikely((s_con = tcpconn_get(
+						 msg->rcv.proto_reserved1, 0, 0, 0, 0, PROTO_NONE))
 				== NULL)) {
 		return -1;
 	} else {
@@ -576,7 +587,7 @@ static int ki_tcp_get_conid_helper(sip_msg_t *msg, str *saddr, pv_spec_t *pvs)
 	clifetime = cfg_get(tcp, tcp_cfg, con_lifetime);
 	su2ip_addr(&ip, &dst.to);
 	port = su_getport(&dst.to);
-	c = tcpconn_get(dst.id, &ip, port, NULL, clifetime);
+	c = tcpconn_get(dst.id, &ip, port, NULL, clifetime, dst.proto);
 
 	if(unlikely(c == 0)) {
 		goto setvalue;
@@ -701,7 +712,7 @@ static int ki_tcp_close_connection_id(sip_msg_t *msg, int conid)
 	long mcmd[2];
 	int n;
 
-	if((con = tcpconn_get(conid, 0, 0, 0, 0))) {
+	if((con = tcpconn_get(conid, 0, 0, 0, 0, PROTO_NONE))) {
 		mcmd[0] = (long)con;
 		mcmd[1] = CONN_EOF;
 
@@ -762,7 +773,7 @@ static int pv_get_tcp(sip_msg_t *msg, pv_param_t *param, pv_value_t *res)
 		return -1;
 	}
 
-	con = tcpconn_get(msg->rcv.proto_reserved1, 0, 0, 0, 0);
+	con = tcpconn_get(msg->rcv.proto_reserved1, 0, 0, 0, 0, PROTO_NONE);
 
 	switch(param->pvn.u.isname.name.n) {
 		case 1: /* c_si */
@@ -783,7 +794,7 @@ static int pv_get_tcp(sip_msg_t *msg, pv_param_t *param, pv_value_t *res)
 			ival = con->cinfo.src_port;
 			tcpconn_put(con);
 			return pv_get_sintval(msg, param, res, ival);
-		case 3:  /* ac_si */
+		case 3: /* ac_si */
 			if(con == NULL) {
 				return pv_get_null(msg, param, res);
 			}
@@ -791,14 +802,14 @@ static int pv_get_tcp(sip_msg_t *msg, pv_param_t *param, pv_value_t *res)
 			tcpconn_put(con);
 			sval.len = strlen(sval.s);
 			return pv_get_strval(msg, param, res, &sval);
-		case 4:  /* ac_sp */
+		case 4: /* ac_sp */
 			if(con == NULL) {
 				return pv_get_null(msg, param, res);
 			}
 			ival = con->cinfo.src_port;
 			tcpconn_put(con);
 			return pv_get_sintval(msg, param, res, ival);
-		case 5:  /* aconid */
+		case 5: /* aconid */
 			if(con == NULL) {
 				return pv_get_null(msg, param, res);
 			}

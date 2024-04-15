@@ -81,7 +81,7 @@ void tcpops_init_evroutes(void)
 int tcpops_get_current_fd(int conid, int *fd)
 {
 	struct tcp_connection *s_con;
-	if(unlikely((s_con = tcpconn_get(conid, 0, 0, 0, 0)) == NULL)) {
+	if(unlikely((s_con = tcpconn_get(conid, 0, 0, 0, 0, PROTO_NONE)) == NULL)) {
 		LM_ERR("invalid connection id %d, (must be a TCP connid)\n", conid);
 		return 0;
 	}
@@ -107,7 +107,7 @@ int tcpops_acquire_fd_from_tcpmain(int conid, int *fd)
 	long msg[2];
 	int n;
 
-	if(unlikely((s_con = tcpconn_get(conid, 0, 0, 0, 0)) == NULL)) {
+	if(unlikely((s_con = tcpconn_get(conid, 0, 0, 0, 0, PROTO_NONE)) == NULL)) {
 		LM_ERR("invalid connection id %d, (must be a TCP connid)\n", conid);
 		return 0;
 	}
