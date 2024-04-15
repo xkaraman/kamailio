@@ -138,9 +138,10 @@ done:
 
 			con_lifetime = cfg_get(tcp, tcp_cfg, con_lifetime);
 			su2ip_addr(&ip, &dst->to);
-			con = tcpconn_get(dst->id, &ip, port, NULL, con_lifetime);
+			con = tcpconn_get(
+					dst->id, &ip, port, NULL, con_lifetime, dst->proto);
 		} else if(likely(dst->id)) {
-			con = tcpconn_get(dst->id, 0, 0, 0, 0);
+			con = tcpconn_get(dst->id, 0, 0, 0, 0, PROTO_NONE);
 		}
 
 		if(con == NULL) {
@@ -274,7 +275,8 @@ int msrp_reply(msrp_frame_t *mf, str *code, str *text, str *xhdrs)
 	if(unlikely((env->srcinfo.proto == PROTO_WS
 						|| env->srcinfo.proto == PROTO_WSS)
 				&& sr_event_enabled(SREV_TCP_WS_FRAME_OUT))) {
-		struct tcp_connection *con = tcpconn_get(env->srcinfo.id, 0, 0, 0, 0);
+		struct tcp_connection *con =
+				tcpconn_get(env->srcinfo.id, 0, 0, 0, 0, PROTO_NONE);
 		ws_event_info_t wsev;
 
 		if(con == NULL) {
