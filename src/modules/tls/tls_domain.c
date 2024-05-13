@@ -1072,6 +1072,7 @@ static int ksr_tls_fix_domain(tls_domain_t *d, tls_domain_t *def)
 {
 	int i;
 	int procs_no;
+	SSL_CTX *ctx = NULL;
 
 	if(ksr_tls_fill_missing(d, def) < 0)
 		return -1;
@@ -1096,79 +1097,63 @@ static int ksr_tls_fix_domain(tls_domain_t *d, tls_domain_t *def)
 		LM_DBG("using one tls method version: %d\n", d->method);
 	}
 	memset(d->ctx, 0, sizeof(SSL_CTX *) * procs_no);
-	for(i = 0; i < procs_no; i++) {
+
 
 #if OPENSSL_VERSION_NUMBER < 0x10100000L
-		/* libssl < 1.1.0 */
-		if(d->method > TLS_USE_TLSvRANGE) {
-			d->ctx[i] = SSL_CTX_new(SSLv23_method());
-		} else {
-			d->ctx[i] = SSL_CTX_new((SSL_METHOD *)ssl_methods[d->method - 1]);
-		}
-		if(d->ctx[i] == NULL) {
-			unsigned long e = 0;
-			e = ERR_peek_last_error();
-			ERR("%s: Cannot create SSL context [%d] (%lu: %s / %s)\n",
-					tls_domain_str(d), i, e, ERR_error_string(e, NULL),
-					ERR_reason_error_string(e));
-			return -1;
-		}
-		if(d->method > TLS_USE_TLSvRANGE) {
-			SSL_CTX_set_options(d->ctx[i], (long)ssl_methods[d->method - 1]);
-		}
+	int a;
 #else
-		/* libssl >= 1.1.0 */
-		d->ctx[i] = SSL_CTX_new(sr_tls_methods[d->method - 1].TLSMethod);
-		if(d->ctx[i] == NULL) {
-			unsigned long e = 0;
-			e = ERR_peek_last_error();
-			ERR("%s: Cannot create SSL context [%d] (%lu: %s / %s)\n",
-					tls_domain_str(d), i, e, ERR_error_string(e, NULL),
-					ERR_reason_error_string(e));
-			return -1;
+
+	ctx = SSL_CTX_new(sr_tls_methods[d->method - 1].TLSMethod);
+
+	// LM_ALERT("after_ssl_ctx_new");
+	if(ctx == NULL) {
+		unsigned long e = 0;
+		e = ERR_peek_last_error();
+		ERR("%s: Cannot create SSL context [%d] (%lu: %s / %s)\n",
+				tls_domain_str(d), i, e, ERR_error_string(e, NULL),
+				ERR_reason_error_string(e));
+		return -1;
+	}
+	if(d->method > TLS_USE_TLSvRANGE) {
+		if(sr_tls_methods[d->method - 1].TLSMethodMin) {
+			SSL_CTX_set_min_proto_version(
+					ctx, sr_tls_methods[d->method - 1].TLSMethodMin);
 		}
-		if(d->method > TLS_USE_TLSvRANGE) {
-			if(sr_tls_methods[d->method - 1].TLSMethodMin) {
-				SSL_CTX_set_min_proto_version(
-						d->ctx[i], sr_tls_methods[d->method - 1].TLSMethodMin);
-			}
-		} else {
-			if(sr_tls_methods[d->method - 1].TLSMethodMin) {
-				SSL_CTX_set_min_proto_version(
-						d->ctx[i], sr_tls_methods[d->method - 1].TLSMethodMin);
-			}
-			if(sr_tls_methods[d->method - 1].TLSMethodMax) {
-				SSL_CTX_set_max_proto_version(
-						d->ctx[i], sr_tls_methods[d->method - 1].TLSMethodMax);
-			}
+	} else {
+		if(sr_tls_methods[d->method - 1].TLSMethodMin) {
+			SSL_CTX_set_min_proto_version(
+					ctx, sr_tls_methods[d->method - 1].TLSMethodMin);
 		}
+		if(sr_tls_methods[d->method - 1].TLSMethodMax) {
+			SSL_CTX_set_max_proto_version(
+					ctx, sr_tls_methods[d->method - 1].TLSMethodMax);
+		}
+	}
 #endif
 
 #ifndef OPENSSL_NO_TLSEXT
-		/*
-		* check server domains for server_name extension and register
-		* callback function
-		*/
-		if((d->type & TLS_DOMAIN_SRV)
-				&& (d->server_name.len > 0 || (d->type & TLS_DOMAIN_DEF))) {
-			if(!SSL_CTX_set_tlsext_servername_callback(
-					   d->ctx[i], tls_server_name_cb)) {
-				LM_ERR("register server_name callback handler for socket "
-					   "[%s:%d], server_name='%s' failed for proc %d\n",
-						ip_addr2a(&d->ip), d->port,
-						(d->server_name.s) ? d->server_name.s : "<default>", i);
-				return -1;
-			}
-			if(!SSL_CTX_set_tlsext_servername_arg(d->ctx[i], d)) {
-				LM_ERR("register server_name callback handler data for socket "
-					   "[%s:%d], server_name='%s' failed for proc %d\n",
-						ip_addr2a(&d->ip), d->port,
-						(d->server_name.s) ? d->server_name.s : "<default>", i);
-				return -1;
-			}
+	/*
+	* check server domains for server_name extension and register
+	* callback function
+	*/
+	if((d->type & TLS_DOMAIN_SRV)
+			&& (d->server_name.len > 0 || (d->type & TLS_DOMAIN_DEF))) {
+		if(!SSL_CTX_set_tlsext_servername_callback(ctx, tls_server_name_cb)) {
+			LM_ERR("register server_name callback handler for socket "
+				   "[%s:%d], server_name='%s' failed for proc %d\n",
+					ip_addr2a(&d->ip), d->port,
+					(d->server_name.s) ? d->server_name.s : "<default>", i);
+			return -1;
 		}
-#endif
+		if(!SSL_CTX_set_tlsext_servername_arg(ctx, d)) {
+			LM_ERR("register server_name callback handler data for socket "
+				   "[%s:%d], server_name='%s' failed for proc %d\n",
+					ip_addr2a(&d->ip), d->port,
+					(d->server_name.s) ? d->server_name.s : "<default>", i);
+			return -1;
+		}
 	}
+#endif
 
 #ifndef OPENSSL_NO_TLSEXT
 	if((d->type & TLS_DOMAIN_SRV)
@@ -1180,6 +1165,13 @@ static int ksr_tls_fix_domain(tls_domain_t *d, tls_domain_t *def)
 	}
 #endif
 
+
+	for(i = 0; i < procs_no; i++) {
+		SSL_CTX_up_ref(ctx);
+		d->ctx[i] = ctx;
+	}
+
+	SSL_CTX_free(ctx);
 	if(load_cert(d) < 0)
 		return -1;
 	if(load_ca_list(d) < 0)
