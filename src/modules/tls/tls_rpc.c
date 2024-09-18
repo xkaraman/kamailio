@@ -43,6 +43,26 @@
 
 static const char *tls_reload_doc[2] = {"Reload TLS configuration file", 0};
 
+static void print_config_list(tls_domains_cfg_t **head)
+{
+	LM_ALERT("rpc one");
+	tls_domains_cfg_t **temp = head;
+	int count = 0;
+	while(*temp) {
+		count++;
+		LM_ALERT("%d: TLS config: %p, ref_count: %d, domain name \n", count,
+				*temp, atomic_get(&(*temp)->ref_count));
+		temp = &(*temp)->next;
+	}
+	LM_ALERT("Number of TLS configurations: %d\n", count);
+}
+
+static void prepend_to_list(tls_domains_cfg_t **head, tls_domains_cfg_t *cfg)
+{
+	cfg->next = *head;
+	*head = cfg;
+}
+
 static void tls_reload(rpc_t *rpc, void *ctx)
 {
 	tls_domains_cfg_t *cfg;
@@ -53,6 +73,10 @@ static void tls_reload(rpc_t *rpc, void *ctx)
 		rpc->fault(ctx, 500, "No TLS configuration file configured");
 		return;
 	}
+
+	DBG("Reloading TLS configuration file: %.*s", tls_domains_cfg_file.len,
+			tls_domains_cfg_file.s);
+	print_config_list(tls_domains_cfg);
 
 	/* Try to delete old configurations first */
 	collect_garbage();
@@ -83,8 +107,17 @@ static void tls_reload(rpc_t *rpc, void *ctx)
 
 	lock_get(tls_domains_cfg_lock);
 
-	cfg->next = (*tls_domains_cfg);
-	*tls_domains_cfg = cfg;
+	print_config_list(tls_domains_cfg);
+
+	prepend_to_list(tls_domains_cfg, cfg);
+
+	print_config_list(tls_domains_cfg);
+
+	// cfg->next = (*tls_domains_cfg);
+	// *tls_domains_cfg = cfg;
+
+	// Traverse the list and print how many cfg exist
+	// print_config_list(tls_domains_cfg);
 
 	lock_release(tls_domains_cfg_lock);
 	rpc->rpl_printf(ctx, "Ok. TLS configuration reloaded.");

@@ -76,14 +76,27 @@ int shm_asciiz_dup(char **dest, char *val)
 	return 0;
 }
 
+static void print_config_list(tls_domains_cfg_t **head)
+{
+	tls_domains_cfg_t **temp = head;
+	int count = 0;
+	while(*temp) {
+		count++;
+		LM_ALERT("%d: TLS config: %p, ref_count: %d, domain name \n", count,
+				*temp, atomic_get(&(*temp)->ref_count));
+		temp = &(*temp)->next;
+	}
+	LM_ALERT("Number of TLS configurations: %d\n", count);
+}
 
 /*
  * Delete old TLS configuration that is not needed anymore
  */
 void collect_garbage(void)
 {
+	LM_ALERT("Collecting garbage");
 	tls_domains_cfg_t *prev, *cur, *next;
-
+	int i = 0;
 	/* Make sure we do not run two garbage collectors
 	      * at the same time
 	      */
@@ -92,12 +105,18 @@ void collect_garbage(void)
 	/* Skip the current configuration, garbage starts
 	      * with the 2nd element on the list
 	      */
+	print_config_list(tls_domains_cfg);
 	prev = *tls_domains_cfg;
 	cur = (*tls_domains_cfg)->next;
 
 	while(cur) {
+		LM_ALERT("Iter %d", i);
 		next = cur->next;
 		if(atomic_get(&cur->ref_count) == 0) {
+			LM_ALERT("Removing leftovers");
+			LM_ALERT("REMOVing TLS config: %p, ref_count: %d, domain name \n",
+					cur, atomic_get(&(cur->ref_count)));
+
 			/* Not referenced by any existing connection */
 			prev->next = cur->next;
 			tls_free_cfg(cur);
@@ -105,6 +124,7 @@ void collect_garbage(void)
 			/* Only update prev if we didn't remove cur */
 			prev = cur;
 		}
+		i++;
 		cur = next;
 	}
 

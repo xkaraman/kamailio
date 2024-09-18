@@ -232,6 +232,7 @@ void tls_free_domain(tls_domain_t *d)
 	if(d->ctx) {
 		procs_no = get_max_procs();
 		for(i = 0; i < procs_no; i++) {
+			// LM_ALERT("Freeing proc %d", i);
 			if(d->ctx[i])
 				SSL_CTX_free(d->ctx[i]);
 		}
@@ -248,6 +249,8 @@ void tls_free_domain(tls_domain_t *d)
 		shm_free(d->crl_file.s);
 	if(d->pkey_file.s)
 		shm_free(d->pkey_file.s);
+	if(d->pkey_password.s)
+		shm_free(d->pkey_password.s);
 	if(d->cert_file.s)
 		shm_free(d->cert_file.s);
 	if(d->server_name.s)
@@ -565,6 +568,7 @@ int fix_shm_pathname(str *path)
 	char *abs_path;
 
 	if(path->s && path->len && *path->s != '.' && *path->s != '/') {
+		LM_CRIT("path: %.*s\n", path->len, path->s);
 		abs_path = get_abs_pathname(0, path);
 		if(abs_path == 0) {
 			LM_ERR("get abs pathname failed\n");
@@ -676,18 +680,22 @@ static int load_crl(tls_domain_t *d)
 		DBG("%s: No CRL configured\n", tls_domain_str(d));
 		return 0;
 	}
+	LM_ALERT("CRL file: %.*s", d->crl_file.len, d->crl_file.s);
 	if(fix_shm_pathname(&d->crl_file) < 0)
 		return -1;
 	LOG(L_INFO, "%s: Certificate revocation lists will be checked (%.*s)\n",
 			tls_domain_str(d), d->crl_file.len, d->crl_file.s);
 	procs_no = get_max_procs();
 	for(i = 0; i < procs_no; i++) {
+		// LM_ALERT("Loading CRL file: %.*s", d->crl_file.len, d->crl_file.s);
 		if(SSL_CTX_load_verify_locations(d->ctx[i], d->crl_file.s, 0) != 1) {
 			ERR("%s: Unable to load certificate revocation list '%s'\n",
 					tls_domain_str(d), d->crl_file.s);
 			TLS_ERR("load_crl:");
 			return -1;
 		}
+		// LM_ALERT("CRL file loaded: ------");
+
 		store = SSL_CTX_get_cert_store(d->ctx[i]);
 		X509_STORE_set_flags(
 				store, X509_V_FLAG_CRL_CHECK | X509_V_FLAG_CRL_CHECK_ALL);
@@ -1530,6 +1538,10 @@ static int load_private_key(tls_domain_t *d)
 
 	procs_no = get_max_procs();
 	for(i = 0; i < procs_no; i++) {
+		LM_ALERT("%s: Loading private key for process %d\n", tls_domain_str(d),
+				process_no);
+		LM_ALERT("address of ctx is 0x%lx\n", (long)d->ctx[i]);
+
 		if(ksr_tls_key_password_mode == 1) {
 			SSL_CTX_set_default_passwd_cb(d->ctx[i], ksr_passwd_ui_cb);
 			SSL_CTX_set_default_passwd_cb_userdata(d->ctx[i], d->pkey_file.s);

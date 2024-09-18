@@ -361,6 +361,7 @@ static void *ser_realloc(void *ptr, size_t size)
 static void *ser_malloc(size_t size, const char *fname, int fline)
 {
 	void *p;
+	// LM_ALERT("ser_malloc(%lu) called from %s:%d\n", size, fname, fline);
 	p = shm_malloc(size);
 	return p;
 }
@@ -369,6 +370,7 @@ static void *ser_malloc(size_t size, const char *fname, int fline)
 static void *ser_realloc(void *ptr, size_t size, const char *fname, int fline)
 {
 	void *p;
+	// LM_ALERT("ser_realloc(%lu) called from %s:%d\n", size, fname, fline);
 	p = shm_realloc(ptr, size);
 	return p;
 }
@@ -393,6 +395,7 @@ static void ser_free(void *ptr)
 #else
 static void ser_free(void *ptr, const char *fname, int fline)
 {
+	// LM_ALERT("ser_free called from %s:%d\n", fname, fline);
 	if(ptr) {
 		shm_free(ptr);
 	}
