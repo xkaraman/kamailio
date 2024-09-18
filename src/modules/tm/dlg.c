@@ -195,15 +195,7 @@ void get_raw_uri(str *_s)
  */
 static inline int str_duplicate(str *_d, str *_s)
 {
-	_d->s = shm_malloc(_s->len);
-	if(!_d->s) {
-		SHM_MEM_ERROR;
-		return -1;
-	}
-
-	memcpy(_d->s, _s->s, _s->len);
-	_d->len = _s->len;
-	return 0;
+	return shm_str_dup(_d, _s);
 }
 
 
