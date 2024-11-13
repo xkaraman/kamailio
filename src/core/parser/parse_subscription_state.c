@@ -42,19 +42,6 @@ void free_subscription_state(subscription_state_t **ss)
 	}
 }
 
-static inline int str_cmp(const str *a, const str *b)
-{
-	int i;
-
-	if(a->len != b->len)
-		return 1;
-
-	for(i = 0; i < a->len; i++)
-		if(a->s[i] != b->s[i])
-			return 1;
-	return 0;
-}
-
 static int ss_parse(str *src, subscription_state_t *ss)
 {
 	static str active = STR_STATIC_INIT("active");
@@ -88,11 +75,11 @@ static int ss_parse(str *src, subscription_state_t *ss)
 
 	/* set state value */
 	trim(&state);
-	if(str_cmp(&state, &active) == 0) {
+	if(str_strcasecmp(&state, &active) == 0) {
 		ss->value = ss_active;
-	} else if(str_cmp(&state, &pending) == 0) {
+	} else if(str_strcasecmp(&state, &pending) == 0) {
 		ss->value = ss_pending;
-	} else if(str_cmp(&state, &terminated) == 0) {
+	} else if(str_strcasecmp(&state, &terminated) == 0) {
 		ss->value = ss_terminated;
 	} else {
 		/* INFO("unknown subscription-State value :%.*s\n",
