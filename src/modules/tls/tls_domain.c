@@ -625,6 +625,7 @@ static int load_ca_list(tls_domain_t *d)
 {
 	int i;
 	int procs_no;
+	X509_STORE *store;
 
 	if((!d->ca_file.s || !d->ca_file.len)
 			&& (!d->ca_path.s || !d->ca_path.len)) {
@@ -637,12 +638,24 @@ static int load_ca_list(tls_domain_t *d)
 		return -1;
 	procs_no = get_max_procs();
 	for(i = 0; i < procs_no; i++) {
+		/* SSL_CTX_load_verify_locations() accumulates certificates in the store
+		 * rather than replacing them. During reload operations, this causes
+		 * memory leaks as CA data gets loaded multiple times. To prevent this,
+		 * we replace the certificate store with a fresh one before loading. */
+		store = X509_STORE_new();
+		if(store == NULL) {
+			ERR("%s: Failed to create new certificate store\n", tls_domain_str(d));
+			return -1;
+		}
+		SSL_CTX_set_cert_store(d->ctx[i], store);
+		
 		if(SSL_CTX_load_verify_locations(d->ctx[i], d->ca_file.s, d->ca_path.s)
 				!= 1) {
 			ERR("%s: Unable to load CA list file '%s' dir '%s'\n",
 					tls_domain_str(d), (d->ca_file.s) ? d->ca_file.s : "",
 					(d->ca_path.s) ? d->ca_path.s : "");
 			TLS_ERR("load_ca_list:");
+			ERR_clear_error();
 			return -1;
 		}
 		if(d->ca_file.s && d->ca_file.len > 0) {
@@ -653,6 +666,7 @@ static int load_ca_list(tls_domain_t *d)
 						tls_domain_str(d), (d->ca_file.s) ? d->ca_file.len : 0,
 						(d->ca_file.s) ? d->ca_file.s : "", d->ca_file.len);
 				TLS_ERR("load_ca_list:");
+				ERR_clear_error();
 				return -1;
 			}
 		}
@@ -685,15 +699,18 @@ static int load_crl(tls_domain_t *d)
 		/* SSL_CTX_load_verify_locations() accumulates certificates in the store
 		 * rather than replacing them. During reload operations, this causes
 		 * memory leaks as CRL data gets loaded multiple times. To prevent this,
-		 * we first clear any existing CRL verification flags, then reload. */
-		store = SSL_CTX_get_cert_store(d->ctx[i]);
-		X509_STORE_set_flags(store, 0);
+		 * we replace the certificate store with a fresh one before loading. */
+		store = X509_STORE_new();
+		if(store == NULL) {
+			ERR("%s: Failed to create new certificate store\n", tls_domain_str(d));
+			return -1;
+		}
+		SSL_CTX_set_cert_store(d->ctx[i], store);
 		
 		if(SSL_CTX_load_verify_locations(d->ctx[i], d->crl_file.s, 0) != 1) {
 			ERR("%s: Unable to load certificate revocation list '%s'\n",
 					tls_domain_str(d), d->crl_file.s);
 			TLS_ERR("load_crl:");
-			/* Clear any OpenSSL errors to prevent accumulation */
 			ERR_clear_error();
 			return -1;
 		}
