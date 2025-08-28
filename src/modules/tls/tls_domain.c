@@ -682,30 +682,21 @@ static int load_crl(tls_domain_t *d)
 			tls_domain_str(d), d->crl_file.len, d->crl_file.s);
 	procs_no = get_max_procs();
 	for(i = 0; i < procs_no; i++) {
-		/* Load CRL certificates into the existing X509_STORE.
-		 * Note: SSL_CTX_load_verify_locations() adds to the store,
-		 * it doesn't replace existing certificates. This is the intended
-		 * behavior as CRL data should be loaded in addition to CA data.
-		 */
+		/* SSL_CTX_load_verify_locations() accumulates certificates in the store
+		 * rather than replacing them. During reload operations, this causes
+		 * memory leaks as CRL data gets loaded multiple times. To prevent this,
+		 * we first clear any existing CRL verification flags, then reload. */
+		store = SSL_CTX_get_cert_store(d->ctx[i]);
+		X509_STORE_set_flags(store, 0);
+		
 		if(SSL_CTX_load_verify_locations(d->ctx[i], d->crl_file.s, 0) != 1) {
 			ERR("%s: Unable to load certificate revocation list '%s'\n",
 					tls_domain_str(d), d->crl_file.s);
 			TLS_ERR("load_crl:");
-			/* Clean up any CRL flags that were set on previous contexts 
-			 * to prevent inconsistent state where some contexts have CRL
-			 * checking enabled but others don't */
-			while(--i >= 0) {
-				store = SSL_CTX_get_cert_store(d->ctx[i]);
-				if(store) {
-					/* Reset flags to prevent partial CRL state */
-					X509_STORE_set_flags(store, 0);
-				}
-			}
-			/* Clear any remaining OpenSSL errors to prevent accumulation */
+			/* Clear any OpenSSL errors to prevent accumulation */
 			ERR_clear_error();
 			return -1;
 		}
-		store = SSL_CTX_get_cert_store(d->ctx[i]);
 		/* Enable CRL checking for this store */
 		X509_STORE_set_flags(
 				store, X509_V_FLAG_CRL_CHECK | X509_V_FLAG_CRL_CHECK_ALL);
