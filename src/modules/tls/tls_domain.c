@@ -29,6 +29,7 @@
 #include <openssl/opensslv.h>
 #include <openssl/bn.h>
 #include <openssl/dh.h>
+#include <openssl/x509.h>
 
 /* only OpenSSL <= 1.1.1 */
 #if !defined(OPENSSL_NO_ENGINE) && OPENSSL_VERSION_NUMBER < 0x030000000L
@@ -625,7 +626,6 @@ static int load_ca_list(tls_domain_t *d)
 {
 	int i;
 	int procs_no;
-	X509_STORE *store;
 
 	if((!d->ca_file.s || !d->ca_file.len)
 			&& (!d->ca_path.s || !d->ca_path.len)) {
@@ -638,35 +638,28 @@ static int load_ca_list(tls_domain_t *d)
 		return -1;
 	procs_no = get_max_procs();
 	for(i = 0; i < procs_no; i++) {
-		/* SSL_CTX_load_verify_locations() accumulates certificates in the store
-		 * rather than replacing them. During reload operations, this causes
-		 * memory leaks as CA data gets loaded multiple times. To prevent this,
-		 * we replace the certificate store with a fresh one before loading. */
-		store = X509_STORE_new();
-		if(store == NULL) {
-			ERR("%s: Failed to create new certificate store\n", tls_domain_str(d));
-			return -1;
-		}
-		SSL_CTX_set_cert_store(d->ctx[i], store);
-		
 		if(SSL_CTX_load_verify_locations(d->ctx[i], d->ca_file.s, d->ca_path.s)
 				!= 1) {
 			ERR("%s: Unable to load CA list file '%s' dir '%s'\n",
 					tls_domain_str(d), (d->ca_file.s) ? d->ca_file.s : "",
 					(d->ca_path.s) ? d->ca_path.s : "");
 			TLS_ERR("load_ca_list:");
-			ERR_clear_error();
 			return -1;
 		}
 		if(d->ca_file.s && d->ca_file.len > 0) {
-			SSL_CTX_set_client_CA_list(
-					d->ctx[i], SSL_load_client_CA_file(d->ca_file.s));
+			STACK_OF(X509_NAME) *client_ca_list = SSL_load_client_CA_file(d->ca_file.s);
+			if(client_ca_list == NULL) {
+				ERR("%s: Failed to load client CA list from file '%s'\n",
+						tls_domain_str(d), d->ca_file.s);
+				TLS_ERR("load_ca_list:");
+				return -1;
+			}
+			SSL_CTX_set_client_CA_list(d->ctx[i], client_ca_list);
 			if(SSL_CTX_get_client_CA_list(d->ctx[i]) == 0) {
 				ERR("%s: Error while setting client CA list file [%.*s/%d]\n",
 						tls_domain_str(d), (d->ca_file.s) ? d->ca_file.len : 0,
 						(d->ca_file.s) ? d->ca_file.s : "", d->ca_file.len);
 				TLS_ERR("load_ca_list:");
-				ERR_clear_error();
 				return -1;
 			}
 		}
@@ -696,25 +689,18 @@ static int load_crl(tls_domain_t *d)
 			tls_domain_str(d), d->crl_file.len, d->crl_file.s);
 	procs_no = get_max_procs();
 	for(i = 0; i < procs_no; i++) {
-		/* SSL_CTX_load_verify_locations() accumulates certificates in the store
-		 * rather than replacing them. During reload operations, this causes
-		 * memory leaks as CRL data gets loaded multiple times. To prevent this,
-		 * we replace the certificate store with a fresh one before loading. */
-		store = X509_STORE_new();
-		if(store == NULL) {
-			ERR("%s: Failed to create new certificate store\n", tls_domain_str(d));
-			return -1;
-		}
-		SSL_CTX_set_cert_store(d->ctx[i], store);
-		
 		if(SSL_CTX_load_verify_locations(d->ctx[i], d->crl_file.s, 0) != 1) {
 			ERR("%s: Unable to load certificate revocation list '%s'\n",
 					tls_domain_str(d), d->crl_file.s);
 			TLS_ERR("load_crl:");
-			ERR_clear_error();
 			return -1;
 		}
-		/* Enable CRL checking for this store */
+		store = SSL_CTX_get_cert_store(d->ctx[i]);
+		if(store == NULL) {
+			ERR("%s: Failed to get certificate store for CRL setup\n",
+					tls_domain_str(d));
+			return -1;
+		}
 		X509_STORE_set_flags(
 				store, X509_V_FLAG_CRL_CHECK | X509_V_FLAG_CRL_CHECK_ALL);
 	}
