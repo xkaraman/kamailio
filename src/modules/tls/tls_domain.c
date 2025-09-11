@@ -257,6 +257,7 @@ void tls_free_domain(tls_domain_t *d)
 		shm_free(d->server_name.s);
 	if(d->server_id.s)
 		shm_free(d->server_id.s);
+
 	shm_free(d);
 }
 
@@ -629,6 +630,8 @@ static int load_ca_list(tls_domain_t *d)
 {
 	int i;
 	int procs_no;
+	X509_STORE *store;
+	X509_STORE *old_store;
 
 	if((!d->ca_file.s || !d->ca_file.len)
 			&& (!d->ca_path.s || !d->ca_path.len)) {
@@ -641,6 +644,20 @@ static int load_ca_list(tls_domain_t *d)
 		return -1;
 	procs_no = get_max_procs();
 	for(i = 0; i < procs_no; i++) {
+		// /*
+		//  * During reload, we must first get a fresh cert store, otherwise
+		//  * the CAs are just added to the existing ones, causing a memory leak.
+		//  */
+		// old_store = SSL_CTX_get_cert_store(d->ctx[i]);
+		// store = X509_STORE_new();
+		// if(store == NULL) {
+		// 	ERR("%s: Unable to create a new certificate store\n",
+		// 			tls_domain_str(d));
+		// 	TLS_ERR("load_ca_list:");
+		// 	return -1;
+		// }
+		// SSL_CTX_set_cert_store(d->ctx[i], store);
+
 		if(SSL_CTX_load_verify_locations(d->ctx[i], d->ca_file.s, d->ca_path.s)
 				!= 1) {
 			ERR("%s: Unable to load CA list file '%s' dir '%s'\n",
@@ -675,6 +692,7 @@ static int load_crl(tls_domain_t *d)
 	int i;
 	int procs_no;
 	X509_STORE *store;
+	X509_STORE *old_store;
 
 	if(!d->crl_file.s) {
 		DBG("%s: No CRL configured\n", tls_domain_str(d));
@@ -686,12 +704,40 @@ static int load_crl(tls_domain_t *d)
 	LOG(L_INFO, "%s: Certificate revocation lists will be checked (%.*s)\n",
 			tls_domain_str(d), d->crl_file.len, d->crl_file.s);
 	procs_no = get_max_procs();
+	LM_ALERT("Procs no: %d", procs_no);
+	_shm_root.xstatus(_shm_root.mem_block);
 	for(i = 0; i < procs_no; i++) {
-		// LM_ALERT("Loading CRL file: %.*s", d->crl_file.len, d->crl_file.s);
+		// // LM_ALERT("Loading CRL file: %.*s", d->crl_file.len, d->crl_file.s);
+		// /* SSL_CTX_load_verify_locations() accumulates certificates in the store
+		//  * rather than replacing them. During reload operations, this causes
+		//  * memory leaks as CRL data gets loaded multiple times. To prevent this,
+		//  * we replace the store with a new one. */
+		// old_store = SSL_CTX_get_cert_store(d->ctx[i]);
+		// store = X509_STORE_new();
+		// if(store == NULL) {
+		// 	ERR("%s: Unable to create a new certificate store\n",
+		// 			tls_domain_str(d));
+		// 	TLS_ERR("load_crl:");
+		// 	return -1;
+		// }
+		// SSL_CTX_set_cert_store(d->ctx[i], store);
+
 		if(SSL_CTX_load_verify_locations(d->ctx[i], d->crl_file.s, 0) != 1) {
 			ERR("%s: Unable to load certificate revocation list '%s'\n",
 					tls_domain_str(d), d->crl_file.s);
-			TLS_ERR("load_crl:");
+			TLS_ERR("load_crl 1:");
+			/* Clean up any CRL flags that were set on previous contexts
+			 * to prevent inconsistent state where some contexts have CRL
+			 * checking enabled but others don't */
+			while(--i >= 0) {
+				store = SSL_CTX_get_cert_store(d->ctx[i]);
+				if(store) {
+					/* Reset flags to prevent partial CRL state */
+					X509_STORE_set_flags(store, 0);
+				}
+			}
+			/* Clear any remaining OpenSSL errors to prevent accumulation */
+			ERR_clear_error();
 			return -1;
 		}
 		// LM_ALERT("CRL file loaded: ------");
@@ -699,6 +745,7 @@ static int load_crl(tls_domain_t *d)
 		store = SSL_CTX_get_cert_store(d->ctx[i]);
 		X509_STORE_set_flags(
 				store, X509_V_FLAG_CRL_CHECK | X509_V_FLAG_CRL_CHECK_ALL);
+		_shm_root.xstatus(_shm_root.mem_block);
 	}
 	return 0;
 }
@@ -1663,13 +1710,16 @@ int tls_fix_domains_cfg(tls_domains_cfg_t *cfg, tls_domain_t *srv_defaults,
 				tls_new_domain(TLS_DOMAIN_DEF | TLS_DOMAIN_SRV, 0, 0);
 	}
 
+	LM_ERR("Fixing cfg server domain %p", d);
 	if(ksr_tls_fix_domain(cfg->srv_default, srv_defaults) < 0)
 		return -1;
+	LM_ERR("Fixing cfg client domain %p", d);
 	if(ksr_tls_fix_domain(cfg->cli_default, cli_defaults) < 0)
 		return -1;
 
 	d = cfg->srv_list;
 	while(d) {
+		LM_ERR("Fixing server domain %p", d);
 		if(ksr_tls_fix_domain(d, srv_defaults) < 0)
 			return -1;
 		d = d->next;
@@ -1677,6 +1727,7 @@ int tls_fix_domains_cfg(tls_domains_cfg_t *cfg, tls_domain_t *srv_defaults,
 
 	d = cfg->cli_list;
 	while(d) {
+		LM_ERR("Fixing client domain %p", d);
 		if(ksr_tls_fix_domain(d, cli_defaults) < 0)
 			return -1;
 		d = d->next;
@@ -1970,6 +2021,10 @@ int tls_add_domain(tls_domains_cfg_t *cfg, tls_domain_t *d)
 	if(!cfg) {
 		ERR("TLS configuration structure missing\n");
 		return -1;
+	}
+
+	if(ksr_tls_domain_duplicated(cfg, d)) {
+		return 1;
 	}
 
 	if(d->type & TLS_DOMAIN_DEF) {

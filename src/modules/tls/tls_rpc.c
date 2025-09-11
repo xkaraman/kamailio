@@ -259,7 +259,7 @@ static void tls_options(rpc_t *rpc, void *c)
 {
 	void *handle;
 	rpc->add(c, "{", &handle);
-	rpc->struct_add(handle, "dSdddSSSSSdSSdddddddddddddd", "force_run",
+	rpc->struct_add(handle, "dSdddSSSSSSdSSdddddddddddddd", "force_run",
 			cfg_get(tls, tls_cfg, force_run), "method",
 			&cfg_get(tls, tls_cfg, method), "verify_certificate",
 			cfg_get(tls, tls_cfg, verify_cert),
@@ -268,7 +268,8 @@ static void tls_options(rpc_t *rpc, void *c)
 			"require_certificate", cfg_get(tls, tls_cfg, require_cert),
 			"verify_client", &cfg_get(tls, tls_cfg, verify_client),
 			"private_key", &cfg_get(tls, tls_cfg, private_key), "ca_list",
-			&cfg_get(tls, tls_cfg, ca_list), "certificate",
+			&cfg_get(tls, tls_cfg, ca_list), "crl_list",
+			&cfg_get(tls, tls_cfg, crl), "certificate",
 			&cfg_get(tls, tls_cfg, certificate), "cipher_list",
 			&cfg_get(tls, tls_cfg, cipher_list), "session_cache",
 			cfg_get(tls, tls_cfg, session_cache), "session_id",

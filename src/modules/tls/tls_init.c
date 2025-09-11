@@ -695,7 +695,7 @@ int tls_pre_init(void)
 	 * CRYPTO_malloc will set allow_customize in openssl to 0
 	 */
 	CRYPTO_get_mem_functions(&mf, &rf, &ff);
-	LM_DBG("initial memory functions - malloc: %p realloc: %p free: %p\n", mf,
+	LM_CRIT("initial memory functions - malloc: %p realloc: %p free: %p\n", mf,
 			rf, ff);
 	mf = NULL;
 	rf = NULL;
@@ -719,7 +719,7 @@ int tls_pre_init(void)
 			   " libssl (can be loaded first to be safe)\n");
 		return -1;
 	}
-	LM_DBG("updated memory functions - malloc: %p realloc: %p free: %p\n",
+	LM_CRIT("updated memory functions - malloc: %p realloc: %p free: %p\n",
 			ser_malloc, ser_realloc, ser_free);
 #endif /* LIBRESSL_VERSION_NUMBER */
 
