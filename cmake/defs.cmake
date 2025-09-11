@@ -107,7 +107,7 @@ option(DISABLE_NAGLE "Disable Nagle algorithm" ON)
 option(USE_MCAST "Use Multicast" ON)
 option(DNS_IP_HACK "Use DNS IP hack" ON)
 option(SHM_MMAP "Use mmap for shared memory" ON)
-
+cmake_dependent_option(USE_ANON_MMAP "Use anonymous mmap" OFF "SHM_MMAP" OFF)
 # memory managers and related debug mode
 option(PKG_MALLOC "Use custom package memory manager (OFF will use system manager)" ON)
 # Requires MEMPKG to be ON
