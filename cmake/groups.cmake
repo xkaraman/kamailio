@@ -793,7 +793,7 @@ function(find_group_name module)
       return()
     endif()
   endforeach()
-  message(STATUS "module ${module} not found in any group")
+  message(DEBUG "module ${module} not found in any included group, provided by user specified list")
   # if not found in any group, it's probably in include_modules list
   # Use the group name "user_specified_list" associated with include_modules
   # list, otherwise it will generate Unknown group component
