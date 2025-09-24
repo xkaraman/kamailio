@@ -167,6 +167,8 @@ if(NOT ${LIBSSL_SET_MUTEX_SHARED})
 
 endif()
 
+option(TIMER_DEBUG "Enable timer debugging" OFF)
+
 # -----------------------
 # Locking mechanism
 # -----------------------
