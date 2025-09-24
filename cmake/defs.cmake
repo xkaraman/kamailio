@@ -1,7 +1,7 @@
-# Quite analogous to the Makefile.defs file This file is used to define the
-# common flags and options for the project The flags are defined as INTERFACE
-# properties of the common library The flags are then used by the other
-# libraries and executables
+# Quite analogous to the Makefile.defs file
+# This file is used to define the common flags and options for the project
+# The flags are defined as INTERFACE properties of the common library
+# The flags are then used by the other libraries and executables
 
 include(CMakeDependentOption) # cmake_dependent_option
 
@@ -75,9 +75,9 @@ message(STATUS "Target Processor Alias: ${TARGET_ARCH}")
 # supported_archs) message(FATAL_ERROR "Target architecture not supported")
 # endif()
 
-# Verbose option (for debugging purposes) (was quiet in Makefile.defs) Probably
-# not needed in CMake and can be removed Use the -DCMAKE_VERBOSE_MAKEFILE=ON
-# option to enable verbose mode
+# Verbose option (for debugging purposes) (was quiet in Makefile.defs)
+# Probably not needed in CMake and can be removed
+# Use the -DCMAKE_VERBOSE_MAKEFILE=ON option to enable verbose mode
 option(VERBOSE "Verbose " OFF)
 if(VERBOSE)
   set(CMAKE_VERBOSE_MAKEFILE ON)

@@ -85,6 +85,7 @@ function(add_module_group group_name group_modules)
         # Remove the 'lib' prefix from the module name
         set_target_properties(${module_name} PROPERTIES PREFIX "")
         # Set suffix to .so always
+        # If we ever start supporting static libraries this will need to be removed
         set_target_properties(${module_name} PROPERTIES SUFFIX ".so")
 
         # Add this policy to new so we can use target_link_libraries(... PRIVATE
