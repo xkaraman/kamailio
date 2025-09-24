@@ -63,7 +63,7 @@ install(
 add_custom_command(
   OUTPUT tls.cfg.sample
   COMMAND
-    sed -e "s#\/usr/local/etc/kamailio/#${CMAKE_INSTALL_FULL_SYSCONFDIR}#g" -e
+    sed -e "s#\/usr/local/etc/#${CMAKE_INSTALL_FULL_SYSCONFDIR}/#g" -e
     "s#kamailio-selfsigned#${MAIN_NAME}-selfsigned#g" < tls.cfg >
     ${CMAKE_CURRENT_BINARY_DIR}/tls.cfg.sample
   WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}
@@ -75,7 +75,9 @@ add_custom_target(tls_cfg_sample ALL DEPENDS tls.cfg.sample)
 
 add_custom_target(
   tls-install-cfg
-  COMMAND ${CMAKE_COMMAND} --install ${CMAKE_BINARY_DIR} --component tls-cfg
+  COMMAND ${CMAKE_COMMAND} -E copy ${CMAKE_CURRENT_BINARY_DIR}/tls.cfg.sample
+          $ENV{DESTDIR}${CMAKE_INSTALL_FULL_SYSCONFDIR}/${MAIN_NAME}/
+  WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}
   COMMENT "Installing tls.cfg.sample to ${MAIN_NAME} config directory"
 )
 add_dependencies(tls-install-cfg tls_cfg_sample)
