@@ -83,7 +83,32 @@ include(${CMAKE_SOURCE_DIR}/cmake/dbschema.cmake)
 # ----------
 # Packaging
 # ----------
-include(${CMAKE_SOURCE_DIR}/cmake/deb-packaging.cmake)
+include(CMakeDependentOption)
+
+option(ENABLE_PACKAGING "Enable packaging targets" ON)
+# cmake_dependent_option(
+#   ENABLE_DEB_PACKAGING
+#   "Enable DEB packaging target"
+#   ON
+#   "ENABLE_PACKAGING;CMAKE_SYSTEM_NAME STREQUAL Linux;NOT EXISTS ${CMAKE_SOURCE_DIR}/CPackConfig.cmake"
+#   OFF
+# )
+
+cmake_dependent_option(
+  ENABLE_ARCHIVE_ALPINE_PACKAGING
+  "Enable Alpine archive packaging target"
+  OFF
+  "ENABLE_PACKAGING;CMAKE_SYSTEM_NAME STREQUAL Linux;NOT EXISTS ${CMAKE_SOURCE_DIR}/CPackConfig.cmake"
+  OFF
+)
+
+if(ENABLE_DEB_PACKAGING)
+  include(${CMAKE_SOURCE_DIR}/cmake/package/deb-packaging.cmake)
+endif()
+if(ENABLE_ARCHIVE_ALPINE_PACKAGING)
+  message(WARNING "alpine packaging")
+  include(${CMAKE_SOURCE_DIR}/cmake/package/archive_alpine.cmake)
+endif()
 
 # Add uninstall target
 if(NOT TARGET uninstall)

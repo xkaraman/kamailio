@@ -153,6 +153,7 @@ target_compile_definitions(
 # the value of the CMAKE_INSTALL_PREFIX variable.
 install(
   TARGETS kamailio
+  # RUNTIME_DEPENDENCY_SET kamailio_runtime_deps
   DESTINATION ${CMAKE_INSTALL_SBINDIR}
   COMPONENT kamailio-core
 )
