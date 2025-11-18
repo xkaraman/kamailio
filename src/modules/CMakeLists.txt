@@ -111,7 +111,7 @@ function(add_module_group group_name group_modules)
         # Install the module to the appropriate directory under the installation
         # prefix
         install(
-          TARGETS ${module_name}
+          TARGETS ${module_name} RUNTIME_DEPENDENCY_SET kamailio_modules_runtime_deps
           DESTINATION ${CMAKE_INSTALL_LIBDIR}/${MAIN_NAME}/modules
           COMPONENT ${group_name}
         )
