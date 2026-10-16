@@ -56,11 +56,11 @@ extern db1_con_t *_tps_db_handle;
 extern db_func_t _tpsdbf;
 
 extern str _tps_contact_host;
-extern int _tps_contact_mode;
+extern int _tps_hash_location;
 extern str _tps_cparam_name;
 extern str _tps_xavu_cfg;
-extern str _tps_xavu_field_acontact;
-extern str _tps_xavu_field_bcontact;
+extern str _tps_xavu_field_acontact_user;
+extern str _tps_xavu_field_bcontact_user;
 extern str _tps_xavu_field_contact_host;
 extern str _tps_xavu_field_acontact_host;
 extern str _tps_xavu_field_bcontact_host;
@@ -89,14 +89,8 @@ int tps_db_update_dialog(
 int tps_db_end_dialog(sip_msg_t *msg, tps_data_t *md, tps_data_t *sd);
 
 static void init_contact_data(
-		tps_data_t *td, str *uuid, str *contact_sv, sip_uri_t *puri, int dir);
-static void append_host_info(tps_data_t *td, sip_uri_t *puri, sr_xavp_t *vavu,
-		int append_port_proto);
+		tps_data_t *td, str *uuid, str *contact_sv, int dir);
 static void add_uuid_param(tps_data_t *td, str *uuid, int dir);
-static sr_xavp_t *get_xavu_host(int dir);
-static int handle_ruri_user_mode(
-		sip_msg_t *msg, tps_data_t *td, int dir, int *cuser_len);
-static int handle_xavu_user_mode(tps_data_t *td, int dir, int *cuser_len);
 
 /**
  *
@@ -225,135 +219,150 @@ int tps_storage_branch_rm(sip_msg_t *msg, tps_data_t *td)
 	return 0;
 }
 
-/**
- *
+/* Missing, null and empty values leave the default component in place. */
+static str tps_contact_xavu(str *field)
+{
+	sr_xavp_t *vavu;
+	str value = STR_NULL;
+
+	if(_tps_xavu_cfg.len <= 0 || field->len <= 0)
+		return value;
+	vavu = xavu_get_child_with_sval(&_tps_xavu_cfg, field);
+	if(vavu != NULL && vavu->val.v.s.len > 0)
+		value = vavu->val.v.s;
+	return value;
+}
+
+/* Parse host[:port][;transport=...] and inherit omitted URI components.
+ * The parsed strings refer to buf, which must outlive Contact construction.
  */
-int tps_storage_fill_contact(
-		sip_msg_t *msg, tps_data_t *td, str *uuid, int dir, int ctmode)
+static int tps_contact_host(sip_uri_t *uri, str *value, char *buf)
+{
+	sip_uri_t override;
+	int i;
+	int len;
+
+	if(value->len <= 0)
+		return 0;
+	if(value->len > TPS_DATA_SIZE) {
+		LM_ERR("contact host override too long\n");
+		return -1;
+	}
+	for(i = 0; i < value->len; i++) {
+		if((unsigned char)value->s[i] <= ' ' || value->s[i] == '<'
+				|| value->s[i] == '>' || value->s[i] == '@') {
+			LM_ERR("invalid character in contact host override\n");
+			return -1;
+		}
+	}
+	memcpy(buf, "sip:", 4);
+	memcpy(buf + 4, value->s, value->len);
+	if(parse_uri(buf, value->len + 4, &override) < 0 || override.host.len <= 0
+			|| override.user.len > 0 || override.passwd.len > 0
+			|| override.headers.len > 0) {
+		LM_ERR("invalid contact host override\n");
+		return -1;
+	}
+	len = override.host.len;
+	if(override.port.len > 0)
+		len += 1 + override.port.len;
+	if(override.params.len > 0) {
+		if(override.transport_val.len <= 0 || override.proto == PROTO_NONE
+				|| override.params.len != 10 + override.transport_val.len
+				|| strncasecmp(override.params.s, "transport=", 10) != 0) {
+			LM_ERR("contact host override only accepts a transport "
+				   "parameter\n");
+			return -1;
+		}
+		len += 1 + override.params.len;
+	}
+	if(len != value->len) {
+		LM_ERR("expected host[:port][;transport=...] for contact host "
+			   "override\n");
+		return -1;
+	}
+	uri->host = override.host;
+	if(override.port.len > 0)
+		uri->port = override.port;
+	if(override.transport_val.len > 0)
+		uri->transport_val = override.transport_val;
+	return 0;
+}
+
+static int tps_contact_user_valid(str *user)
+{
+	char buf[TPS_DATA_SIZE + 16];
+	sip_uri_t uri;
+	int i;
+
+	if(user->len > TPS_DATA_SIZE)
+		return 0;
+	for(i = 0; i < user->len; i++) {
+		if((unsigned char)user->s[i] <= ' ' || user->s[i] == '<'
+				|| user->s[i] == '>')
+			return 0;
+	}
+	memcpy(buf, "sip:", 4);
+	memcpy(buf + 4, user->s, user->len);
+	memcpy(buf + 4 + user->len, "@localhost", 10);
+	return parse_uri(buf, user->len + 14, &uri) == 0
+		   && uri.user.len == user->len && uri.passwd.len == 0
+		   && uri.host.len == 9 && memcmp(uri.host.s, "localhost", 9) == 0
+		   && uri.port.len == 0 && uri.params.len == 0 && uri.headers.len == 0;
+}
+
+/** Build a side's Contact independently of the lookup key location. */
+int tps_storage_fill_contact(sip_msg_t *msg, tps_data_t *td, str *uuid, int dir)
 {
 	str sv;
+	str cuser = STR_NULL;
+	str host;
 	sip_uri_t puri;
-	int contact_len;
-	int cparam_len;
-	int cuser_len = 0;
-	sr_xavp_t *vavu = NULL;
+	sip_uri_t curi;
+	contact_body_t *cb;
+	char hostbuf[TPS_DATA_SIZE + 4];
+	size_t needed;
+	size_t scheme_len;
+	int metid;
 
-	if(dir == TPS_DIR_DOWNSTREAM) {
-		sv = td->bs_contact;
-	} else {
-		sv = td->as_contact;
-	}
-	if(sv.len <= 0) {
-		/* no contact - skip */
+	sv = (dir == TPS_DIR_DOWNSTREAM) ? td->bs_contact : td->as_contact;
+	if(sv.len <= 0)
 		return 0;
-	}
-
 	if(parse_uri(sv.s, sv.len, &puri) < 0) {
 		LM_ERR("failed to parse the uri\n");
 		return -1;
 	}
-
-	contact_len = sv.len;
-	if(_tps_contact_host.len) {
-		contact_len = sv.len - puri.host.len + _tps_contact_host.len;
+	for(scheme_len = 0; scheme_len < (size_t)sv.len; scheme_len++) {
+		if(sv.s[scheme_len] == ':') {
+			scheme_len++;
+			break;
+		}
 	}
 
-	if(ctmode == TPS_CONTACT_MODE_RURIUSER
-			|| ctmode == TPS_CONTACT_MODE_XAVPUSER) {
-		cparam_len = _tps_cparam_name.len;
-	} else {
-		cparam_len = 0;
-	}
-
-	if(td->cp + 8 + (2 * uuid->len) + cparam_len + contact_len
-			>= td->cbuf + TPS_DATA_SIZE) {
-		LM_ERR("insufficient data buffer\n");
-		return -1;
-	}
-
-	/* Initialize contact data */
-	init_contact_data(td, uuid, &sv, &puri, dir);
-
-	/* Process contact based on mode */
-	if(ctmode == TPS_CONTACT_MODE_RURIUSER
-			|| ctmode == TPS_CONTACT_MODE_XAVPUSER) {
-		/* create new URI parameter for Contact header */
-		if(ctmode == TPS_CONTACT_MODE_RURIUSER) {
-			if(handle_ruri_user_mode(msg, td, dir, &cuser_len) < 0) {
+	if(_tps_hash_location == TPS_HASH_PARAM) {
+		/* A is as_contact (upstream); B is bs_contact (downstream). */
+		cuser = tps_contact_xavu((dir == TPS_DIR_DOWNSTREAM)
+										 ? &_tps_xavu_field_bcontact_user
+										 : &_tps_xavu_field_acontact_user);
+		if(cuser.len > 0) {
+			if(!tps_contact_user_valid(&cuser)) {
+				LM_ERR("invalid contact user override\n");
 				return -1;
 			}
-		} else {
-			if(handle_xavu_user_mode(td, dir, &cuser_len) < 0) {
+		} else if(dir == TPS_DIR_DOWNSTREAM) {
+			if(parse_headers(msg, HDR_CSEQ_F, 0) != 0 || msg->cseq == NULL
+					|| get_cseq(msg) == NULL) {
+				LM_ERR("bad sip message or missing CSeq header\n");
 				return -1;
 			}
-		}
-
-		if(cuser_len > 0) {
-			*td->cp = '@';
-			td->cp++;
-		}
-
-		append_host_info(td, &puri, NULL, 1);
-		add_uuid_param(td, uuid, dir);
-
-	} else {
-		/* contact_mode=0 or contact_mode=3 */
-		/* create new user part for Contact header URI */
-		if(dir == TPS_DIR_DOWNSTREAM) {
-			*td->cp = 'b';
-		} else {
-			*td->cp = 'a';
-		}
-		td->cp++;
-		memcpy(td->cp, uuid->s, uuid->len);
-		td->cp += uuid->len;
-		*td->cp = '@';
-		td->cp++;
-
-		/* contact_host xavu takes preference */
-		vavu = NULL;
-		if(ctmode == TPS_CONTACT_MODE_XAVPHOST) {
-			/* extract the contact host from xavp*/
-			vavu = get_xavu_host(dir);
-		}
-
-		/* ctmode=0 preserves port/transport from original URI; ctmode=3 does not */
-		append_host_info(
-				td, &puri, vavu, (ctmode == TPS_CONTACT_MODE_SKEYUSER) ? 1 : 0);
-	}
-
-	/* Finalize the contact header */
-	*td->cp = '>';
-	td->cp++;
-	if(dir == TPS_DIR_DOWNSTREAM) {
-		td->bs_contact.len = td->cp - td->bs_contact.s;
-		LM_DBG("td->bs %.*s\n", td->bs_contact.len, td->bs_contact.s);
-	} else {
-		td->as_contact.len = td->cp - td->as_contact.s;
-		LM_DBG("td->as %.*s\n", td->as_contact.len, td->as_contact.s);
-	}
-	return 0;
-}
-
-/* Handle contact_mode=1 */
-static int handle_ruri_user_mode(
-		sip_msg_t *msg, tps_data_t *td, int dir, int *cuser_len)
-{
-	sip_uri_t curi;
-	contact_body_t *cb;
-
-	if(dir == TPS_DIR_DOWNSTREAM) {
-		/* extract the contact address */
-		if(parse_headers(msg, HDR_CONTACT_F, 0) < 0 || msg->contact == NULL) {
-			if(get_cseq(msg)->method_id != METHOD_BYE) {
+			metid = get_cseq(msg)->method_id;
+			if(parse_headers(msg, HDR_CONTACT_F, 0) < 0
+					|| msg->contact == NULL) {
+				if(metid == METHOD_BYE)
+					return 0;
 				LM_WARN("bad sip message or missing Contact header\n");
 				return -1;
 			}
-			LM_DBG("BYE with no contact - skipping it\n");
-			return 0;
-		}
-
-		if(msg->contact != NULL) {
 			if(parse_contact(msg->contact) < 0
 					|| ((contact_body_t *)msg->contact->parsed)->contacts
 							   == NULL
@@ -362,96 +371,97 @@ static int handle_ruri_user_mode(
 				LM_ERR("bad Contact header\n");
 				return -1;
 			}
-
 			cb = (contact_body_t *)msg->contact->parsed;
 			if(parse_uri(cb->contacts->uri.s, cb->contacts->uri.len, &curi)
 					< 0) {
 				LM_ERR("failed to parse the contact uri\n");
 				return -1;
 			}
-
-			if(curi.user.len > 0) {
-				memcpy(td->cp, curi.user.s, curi.user.len);
-				td->cp += curi.user.len;
-				*cuser_len = curi.user.len;
-			} else {
-				LM_DBG("no contact user - skipping it\n");
-			}
-		}
-	} else {
-		/* extract the ruri */
-		if(parse_sip_msg_uri(msg) < 0) {
-			LM_ERR("failed to parse r-uri\n");
-			return -1;
-		}
-		if(msg->parsed_uri.user.len > 0) {
-			memcpy(td->cp, msg->parsed_uri.user.s, msg->parsed_uri.user.len);
-			td->cp += msg->parsed_uri.user.len;
-			*cuser_len = msg->parsed_uri.user.len;
+			cuser = curi.user;
 		} else {
-			LM_DBG("no r-uri user - skipping it\n");
+			if(parse_sip_msg_uri(msg) < 0) {
+				LM_ERR("failed to parse r-uri\n");
+				return -1;
+			}
+			cuser = msg->parsed_uri.user;
 		}
 	}
-	return 0;
-}
 
-/* Handle contact_mode=2 */
-static int handle_xavu_user_mode(tps_data_t *td, int dir, int *cuser_len)
-{
-	sr_xavp_t *vavu;
-	str *field;
+	/* Priority for host
+		1. a/b contact host override
+		2. xavu contact_host override
+		3. module parameter contact_host
+	*/
+	host = tps_contact_xavu((dir == TPS_DIR_DOWNSTREAM)
+									? &_tps_xavu_field_bcontact_host
+									: &_tps_xavu_field_acontact_host);
+	if(host.len <= 0)
+		host = tps_contact_xavu(&_tps_xavu_field_contact_host);
+	if(host.len <= 0)
+		host = _tps_contact_host;
+	if(tps_contact_host(&puri, &host, hostbuf) < 0)
+		return -1;
 
-	if(dir == TPS_DIR_DOWNSTREAM) {
-		field = &_tps_xavu_field_acontact;
+	needed = 1 + (size_t)uuid->len;						  /* saved a/b uuid */
+	needed += 1 + scheme_len + (size_t)puri.host.len + 1; /* <scheme host> */
+	if(puri.port.len > 0)
+		needed += 1 + (size_t)puri.port.len;
+	if(puri.transport_val.len > 0)
+		needed += 11 + (size_t)puri.transport_val.len;
+	if(_tps_hash_location == TPS_HASH_PARAM) {
+		if(cuser.len > 0)
+			needed += (size_t)cuser.len + 1; /* user@ */
+		needed += 1 + (size_t)_tps_cparam_name.len + 1 + 1 + (size_t)uuid->len;
 	} else {
-		field = &_tps_xavu_field_bcontact;
+		needed += 1 + (size_t)uuid->len + 1; /* a|b + uuid + @ */
 	}
-	vavu = xavu_get_child_with_sval(&_tps_xavu_cfg, field);
-	if(vavu == NULL || vavu->val.v.s.len <= 0) {
-		LM_ERR("could not evaluate %s contact xavu\n",
-				(dir == TPS_DIR_DOWNSTREAM) ? "a" : "b");
+	if(needed > (size_t)(td->cbuf + TPS_DATA_SIZE - td->cp)) {
+		LM_ERR("insufficient data buffer\n");
 		return -1;
 	}
 
-	memcpy(td->cp, vavu->val.v.s.s, vavu->val.v.s.len);
-	td->cp += vavu->val.v.s.len;
-	*cuser_len = vavu->val.v.s.len;
-	return 0;
-}
-
-/* Get the contact host xavu from the xavu defined in the config
-
-	dir: TPS_DIR_DOWNSTREAM or TPS_DIR_UPSTREAM
-	return: the xavu or NULL if not found
-
-	TODO: Who is responsible to free the xavu?
-*/
-static sr_xavp_t *get_xavu_host(int dir)
-{
-	/* Downstream should be B side, upstream should be A side
-	otherwise the config related params are used in reversed for some reason */
-	sr_xavp_t *vavu;
-	str *field;
-
-	if(dir == TPS_DIR_DOWNSTREAM) {
-		field = &_tps_xavu_field_bcontact_host;
+	init_contact_data(td, uuid, &sv, dir);
+	if(_tps_hash_location == TPS_HASH_PARAM) {
+		if(cuser.len > 0) {
+			memcpy(td->cp, cuser.s, cuser.len);
+			td->cp += cuser.len;
+			*td->cp++ = '@';
+		}
 	} else {
-		field = &_tps_xavu_field_acontact_host;
+		*td->cp++ = (dir == TPS_DIR_DOWNSTREAM) ? 'b' : 'a';
+		memcpy(td->cp, uuid->s, uuid->len);
+		td->cp += uuid->len;
+		*td->cp++ = '@';
 	}
-
-	vavu = xavu_get_child_with_sval(&_tps_xavu_cfg, field);
-	if(vavu == NULL || vavu->val.v.s.len <= 0) {
-		LM_ERR("could not evaluate %s_contact_host xavu. Make sure it has a "
-			   "non-empty value or it is set in the related routes.\n",
-				(dir == TPS_DIR_DOWNSTREAM) ? "b" : "a");
-		return NULL;
+	memcpy(td->cp, puri.host.s, puri.host.len);
+	td->cp += puri.host.len;
+	if(puri.port.len > 0) {
+		*td->cp++ = ':';
+		memcpy(td->cp, puri.port.s, puri.port.len);
+		td->cp += puri.port.len;
 	}
-	return vavu;
+	if(puri.transport_val.len > 0) {
+		memcpy(td->cp, ";transport=", 11);
+		td->cp += 11;
+		memcpy(td->cp, puri.transport_val.s, puri.transport_val.len);
+		td->cp += puri.transport_val.len;
+	}
+	if(_tps_hash_location == TPS_HASH_PARAM)
+		add_uuid_param(td, uuid, dir);
+	*td->cp++ = '>';
+	if(dir == TPS_DIR_DOWNSTREAM) {
+		td->bs_contact.len = td->cp - td->bs_contact.s;
+		LM_ERR("td->bs %.*s\n", td->bs_contact.len, td->bs_contact.s);
+	} else {
+		td->as_contact.len = td->cp - td->as_contact.s;
+		LM_ERR("td->as %.*s\n", td->as_contact.len, td->as_contact.s);
+	}
+	return 0;
 }
 
 /* Initialize the contact data for the given direction and save uuid for later use*/
 static void init_contact_data(
-		tps_data_t *td, str *uuid, str *contact_sv, sip_uri_t *puri, int dir)
+		tps_data_t *td, str *uuid, str *contact_sv, int dir)
 {
 	/* Copy uuid based on direction */
 	if(dir == TPS_DIR_DOWNSTREAM) {
@@ -485,62 +495,6 @@ static void init_contact_data(
 		td->cp++;
 		if(contact_sv->s[i] == ':') {
 			break;
-		}
-	}
-}
-
-/* Append host info to contact
-	* @in/out td - tps data
-	* @in puri - sip uri
-	* @in vavu - xavu_field_a/b_contact_host or Null
-
-	Modifies the contact in td to include the host info with priorities:
-	1. xavu_field_a/b_contact_host if provided
-	2. xavu field xavu_field_contact_host
-	3. mod param contact_host
-	4. sip uri host
-
-	Also include port and protocol if present
- */
-static void append_host_info(
-		tps_data_t *td, sip_uri_t *puri, sr_xavp_t *vavu, int append_port_proto)
-{
-	/* contact_host xavu takes preference */
-	if(vavu == NULL || vavu->val.v.s.len <= 0) {
-		if(_tps_xavu_cfg.len > 0 && _tps_xavu_field_contact_host.len > 0) {
-			vavu = xavu_get_child_with_sval(
-					&_tps_xavu_cfg, &_tps_xavu_field_contact_host);
-		}
-	}
-
-	if(vavu != NULL && vavu->val.v.s.len > 0) {
-		memcpy(td->cp, vavu->val.v.s.s, vavu->val.v.s.len);
-		td->cp += vavu->val.v.s.len;
-	} else {
-		if(_tps_contact_host.len) {
-			memcpy(td->cp, _tps_contact_host.s, _tps_contact_host.len);
-			td->cp += _tps_contact_host.len;
-		} else {
-			memcpy(td->cp, puri->host.s, puri->host.len);
-			td->cp += puri->host.len;
-		}
-	}
-
-	/*  Add port if present  */
-	if(append_port_proto) {
-		if(puri->port.len > 0) {
-			*td->cp = ':';
-			td->cp++;
-			memcpy(td->cp, puri->port.s, puri->port.len);
-			td->cp += puri->port.len;
-		}
-
-		/*  Add transport if present */
-		if(puri->transport_val.len > 0) {
-			memcpy(td->cp, ";transport=", 11);
-			td->cp += 11;
-			memcpy(td->cp, puri->transport_val.s, puri->transport_val.len);
-			td->cp += puri->transport_val.len;
 		}
 	}
 }
@@ -711,12 +665,10 @@ int tps_storage_record(sip_msg_t *msg, tps_data_t *td, int dialog, int dir)
 		suid.len--;
 	}
 
-	ret = tps_storage_fill_contact(
-			msg, td, &suid, TPS_DIR_DOWNSTREAM, _tps_contact_mode);
+	ret = tps_storage_fill_contact(msg, td, &suid, TPS_DIR_DOWNSTREAM);
 	if(ret < 0)
 		goto error;
-	ret = tps_storage_fill_contact(
-			msg, td, &suid, TPS_DIR_UPSTREAM, _tps_contact_mode);
+	ret = tps_storage_fill_contact(msg, td, &suid, TPS_DIR_UPSTREAM);
 	if(ret < 0)
 		goto error;
 
