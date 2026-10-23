@@ -310,9 +310,9 @@ static int tps_contact_user_valid(str *user)
 	memcpy(buf + 4, user->s, user->len);
 	memcpy(buf + 4 + user->len, "@localhost", 10);
 	return parse_uri(buf, user->len + 14, &uri) == 0
-		   && uri.user.len == user->len && uri.passwd.len == 0
-		   && uri.host.len == 9 && memcmp(uri.host.s, "localhost", 9) == 0
-		   && uri.port.len == 0 && uri.params.len == 0 && uri.headers.len == 0;
+		   && uri.user.len == user->len && uri.host.len == 9
+		   && memcmp(uri.host.s, "localhost", 9) == 0 && uri.port.len == 0
+		   && uri.params.len == 0 && uri.headers.len == 0;
 }
 
 /** Build a side's Contact independently of the lookup key location. */
