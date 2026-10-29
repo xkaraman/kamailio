@@ -237,82 +237,111 @@ static str tps_contact_xavu(str *field)
 	return value;
 }
 
-/* Parse host[:port][;transport=...] and inherit omitted URI components.
- * The parsed strings refer to buf, which must outlive Contact construction.
+/** Build and validate the selected userinfo and host together, before adding
+ * the lookup key. Missing port/transport components retain the URI defaults.
+ *
+ * @param[in,out] uri Parsed Record-Route-derived URI supplying the scheme type
+ *        and default host, port and transport. On success, updates host and
+ *        any explicitly supplied port/port_no and transport_val/proto fields.
+ *        The scheme type and user/password fields are not modified.
+ *        On failure, the structure is unchanged.
+ * @param[in] user Selected userinfo (user[:password]), without '@' or host.
+ *        An empty value omits userinfo from the candidate. Validated here;
+ *        the caller copies it into the final Contact. Not modified.
+ * @param[in] host Optional host[:port][;transport=...] override, without a
+ *        scheme or userinfo. An empty value uses uri->host. Not modified.
+ * @param[out] buf Caller-owned scratch buffer for the candidate URI, which
+ *        is not NUL-terminated. Updated uri string fields point into this
+ *        buffer, so it must remain valid until the final Contact is copied.
+ *        Its contents are unspecified on failure or when no candidate is built.
+ * @param[in] size Capacity of buf in bytes.
+ * @return 0 on success (including no userinfo or host override to validate),
+ *         -1 for invalid input or insufficient scratch-buffer space.
  */
-static int tps_contact_host(sip_uri_t *uri, str *value, char *buf)
+static int tps_contact_uri(
+		sip_uri_t *uri, str *user, str *host, char *buf, size_t size)
 {
-	sip_uri_t override;
+	sip_uri_t candidate;
+	str scheme = str_init("sip:");
+	str new_host = STR_NULL;
+	char *host_start;
+	char *p;
+	size_t needed;
 	int i;
 	int len;
 
-	if(value->len <= 0)
+	if(user->len <= 0 && host->len <= 0)
 		return 0;
-	if(value->len > TPS_DATA_SIZE) {
-		LM_ERR("contact host override too long\n");
+
+	if(uri->type == SIPS_URI_T) {
+		scheme.s = "sips:";
+		scheme.len = 5;
+	}
+	new_host = (host->len > 0) ? *host : uri->host;
+	needed = (size_t)scheme.len + (size_t)new_host.len;
+	if(user->len > 0)
+		needed += (size_t)user->len + 1; /* userinfo + '@' */
+	if(needed > size) {
+		LM_ERR("contact URI candidate too long\n");
 		return -1;
 	}
-	for(i = 0; i < value->len; i++) {
-		if((unsigned char)value->s[i] <= ' ' || value->s[i] == '<'
-				|| value->s[i] == '>' || value->s[i] == '@') {
-			LM_ERR("invalid character in contact host override\n");
-			return -1;
-		}
+
+	p = buf;
+	memcpy(p, scheme.s, scheme.len);
+	p += scheme.len;
+	if(user->len > 0) {
+		memcpy(p, user->s, user->len);
+		p += user->len;
+		*p++ = '@';
 	}
-	memcpy(buf, "sip:", 4);
-	memcpy(buf + 4, value->s, value->len);
-	if(parse_uri(buf, value->len + 4, &override) < 0 || override.host.len <= 0
-			|| override.user.len > 0 || override.passwd.len > 0
-			|| override.headers.len > 0) {
-		LM_ERR("invalid contact host override\n");
+	host_start = p;
+	memcpy(p, new_host.s, new_host.len);
+	p += new_host.len;
+
+	if(parse_uri(buf, p - buf, &candidate) < 0 || candidate.host.len <= 0
+			|| candidate.headers.len > 0) {
+		LM_ERR("invalid contact URI\n");
 		return -1;
 	}
-	len = override.host.len;
-	if(override.port.len > 0)
-		len += 1 + override.port.len;
-	if(override.params.len > 0) {
-		if(override.transport_val.len <= 0 || override.proto == PROTO_NONE
-				|| override.params.len != 10 + override.transport_val.len
-				|| strncasecmp(override.params.s, "transport=", 10) != 0) {
+
+	len = candidate.user.len;
+	if(candidate.passwd.s != NULL)
+		len += 1 + candidate.passwd.len;
+	if(len != user->len || candidate.host.s != host_start
+			|| (user->len > 0 && candidate.user.s != buf + scheme.len)) {
+		LM_ERR("invalid contact userinfo or host boundary\n");
+		return -1;
+	}
+	len = candidate.host.len;
+	if(candidate.port.len > 0)
+		len += 1 + candidate.port.len;
+	if(candidate.params.len > 0) {
+		if(candidate.transport_val.len <= 0 || candidate.proto == PROTO_NONE
+				|| candidate.params.len != 10 + candidate.transport_val.len
+				|| strncasecmp(candidate.params.s, "transport=", 10) != 0) {
 			LM_ERR("contact host override only accepts a transport "
 				   "parameter\n");
 			return -1;
 		}
-		len += 1 + override.params.len;
+		len += 1 + candidate.params.len;
 	}
-	if(len != value->len) {
+	if(len != new_host.len) {
 		LM_ERR("expected host[:port][;transport=...] for contact host "
 			   "override\n");
 		return -1;
 	}
-	uri->host = override.host;
-	if(override.port.len > 0)
-		uri->port = override.port;
-	if(override.transport_val.len > 0)
-		uri->transport_val = override.transport_val;
-	return 0;
-}
 
-static int tps_contact_user_valid(str *user)
-{
-	char buf[TPS_DATA_SIZE + 16];
-	sip_uri_t uri;
-	int i;
-
-	if(user->len > TPS_DATA_SIZE)
-		return 0;
-	for(i = 0; i < user->len; i++) {
-		if((unsigned char)user->s[i] <= ' ' || user->s[i] == '<'
-				|| user->s[i] == '>')
-			return 0;
+	/* Apply only after validation; explicit port and transport always win. */
+	uri->host = candidate.host;
+	if(candidate.port.len > 0) {
+		uri->port = candidate.port;
+		uri->port_no = candidate.port_no;
 	}
-	memcpy(buf, "sip:", 4);
-	memcpy(buf + 4, user->s, user->len);
-	memcpy(buf + 4 + user->len, "@localhost", 10);
-	return parse_uri(buf, user->len + 14, &uri) == 0
-		   && uri.user.len == user->len && uri.host.len == 9
-		   && memcmp(uri.host.s, "localhost", 9) == 0 && uri.port.len == 0
-		   && uri.params.len == 0 && uri.headers.len == 0;
+	if(candidate.transport_val.len > 0) {
+		uri->transport_val = candidate.transport_val;
+		uri->proto = candidate.proto;
+	}
+	return 0;
 }
 
 /** Build a side's Contact independently of the lookup key location. */
@@ -324,7 +353,7 @@ int tps_storage_fill_contact(sip_msg_t *msg, tps_data_t *td, str *uuid, int dir)
 	sip_uri_t puri;
 	sip_uri_t curi;
 	contact_body_t *cb;
-	char hostbuf[TPS_DATA_SIZE + 4];
+	char contactbuf[TPS_DATA_SIZE];
 	size_t needed;
 	size_t scheme_len;
 	int metid;
@@ -359,12 +388,13 @@ int tps_storage_fill_contact(sip_msg_t *msg, tps_data_t *td, str *uuid, int dir)
 										 ? &_tps_xavu_field_bcontact_user
 										 : &_tps_xavu_field_acontact_user);
 
-		/* if user override is present validate it */
+		/* Priority for contact user
+			1. a/b contact user override
+			2a. contact user from the contact header
+			2b. contact user from the request URI
+		*/
 		if(cuser.len > 0) {
-			if(!tps_contact_user_valid(&cuser)) {
-				LM_ERR("invalid contact user override\n");
-				return -1;
-			}
+			LM_ERR("using xavu contact user: %.*s\n", cuser.len, cuser.s);
 		} else if(dir == TPS_DIR_DOWNSTREAM) {
 			/* else use contact user */
 			if(parse_headers(msg, HDR_CSEQ_F, 0) != 0 || msg->cseq == NULL
@@ -426,9 +456,11 @@ int tps_storage_fill_contact(sip_msg_t *msg, tps_data_t *td, str *uuid, int dir)
 		host = tps_contact_xavu(&_tps_xavu_field_contact_host);
 	if(host.len <= 0)
 		host = _tps_contact_host;
-	if(tps_contact_host(&puri, &host, hostbuf) < 0)
+	if(tps_contact_uri(&puri, &cuser, &host, contactbuf, sizeof(contactbuf))
+			< 0) {
+		LM_ERR("failed to build the contact URI\n");
 		return -1;
-
+	}
 	/* Saved lookup key, separate from the Contact URI. */
 	needed = 0;
 	needed += 1 + (size_t)uuid->len; /* saved a/b uuid */
